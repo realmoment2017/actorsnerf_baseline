@@ -196,6 +196,16 @@ class Network(nn.Module):
         depth_map = torch.sum(weights * z_vals, -1)
         acc_map = torch.sum(weights, -1)
 
+#        bgcolor[0] = 86.0
+#        bgcolor[1] = 102.0
+#        bgcolor[2] = 95.0
+#        bgcolor[...] = 128.0
+#        acc_map_msk = torch.clamp(acc_map[..., None], 0, 1)
+#        acc_map_msk[acc_map_msk>0.7] = 1
+#        acc_map_msk[acc_map_msk<=0.7] = 0
+#        acc_map_msk = acc_map_msk[:,0]
+#        rgb_map[acc_map_msk==0]= rgb_map[acc_map_msk==0] + bgcolor[None, :]/255.
+
         rgb_map = rgb_map + (1.-acc_map[...,None]) * bgcolor[None, :]/255.
 
         return rgb_map, acc_map, weights, depth_map

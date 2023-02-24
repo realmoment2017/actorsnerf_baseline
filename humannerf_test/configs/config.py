@@ -18,7 +18,7 @@ _C.eval_iter = 10000000
 # for rendering
 _C.render_folder_name = ""
 _C.ignore_non_rigid_motions = False
-_C.render_skip = 1
+_C.render_skip = 60
 _C.render_frames = 100
 
 # for data loader
