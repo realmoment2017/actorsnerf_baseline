@@ -1,6 +1,6 @@
-task: 'zju_mocap'
-subject: 'p387'
-experiment: '300frame-ablation_skip30'
+task: 'smpl_mocap_color_v1'
+subject: 'p396'
+experiment: 'render_mask_1.0-mse_0.2-lpips_1.0-alpha_0.0-no_weight_embed-test'
 
 
 ##############################################3
@@ -8,27 +8,38 @@ experiment: '300frame-ablation_skip30'
 
 train:
   dataset_module: 'core.data.human_nerf.train'
-  dataset: 'zju_387_train'
+  dataset: 'zju_396_train'
+  lossweights:
+    lpips: 1.0
+    mse: 0.2
 
 progress:
   dataset_module: 'core.data.human_nerf.train'
-  dataset: 'zju_387_test'
+  dataset: 'zju_396_test'
 
 movement:
   dataset_module: 'core.data.human_nerf.train'
-  dataset: 'zju_387_test'
+  dataset: 'zju_396_test'
 
 freeview:
   dataset_module: 'core.data.human_nerf.freeview'
-  dataset: 'zju_387_test'
+  dataset: 'zju_396_test'
 
 tpose:
   dataset_module: 'core.data.human_nerf.tpose'
-  dataset: 'zju_387_test'
+  dataset: 'zju_396_test'
+
+vis_mesh:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_377_train'
 
 bgcolor: [0., 0., 0.]
 resize_img_scale: 0.5
 
 # reduce the size of patch from 32x32 to 20x20 to fit in a single gpu
 patch:
+  N_patches: 2
   size: 20      # [Patch] size of patch
+
+use_vis_mesh: True
+voxel_size: [0.005, 0.005, 0.005]

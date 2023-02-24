@@ -1,0 +1,48 @@
+task: 'smpl_mocap_color_v1'
+subject: 'p377'
+experiment: 'render_mask_1.0-mse_0.2-lpips_1.0-alpha_0.0-no_weight_embed-test'
+
+
+##############################################3
+## Data Configuration
+
+train:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_377_train'
+  lossweights:
+    lpips: 1.0
+    mse: 0.2
+
+progress:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_377_test'
+
+movement:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_377_test'
+
+freeview:
+  dataset_module: 'core.data.human_nerf.freeview'
+  dataset: 'zju_377_test'
+
+tpose:
+  dataset_module: 'core.data.human_nerf.tpose'
+  dataset: 'zju_377_test'
+
+vis_mesh:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_377_train'
+
+bgcolor: [0., 0., 0.]
+resize_img_scale: 0.5
+
+# reduce the size of patch from 32x32 to 20x20 to fit in a single gpu
+patch:
+  N_patches: 6
+  size: 20      # [Patch] size of patch
+
+use_vis_mesh: False
+voxel_size: [0.005, 0.005, 0.005]
+
+resume: True
+load_net: '/data/jiteng/workspace/workspace/humannerf_baseline/humannerf/experiments/human_nerf/smpl_mocap_color_v1/p377/render_mask_1.0-mse_0.2-lpips_1.0-alpha_0.0-no_weight_embed-test_v2/init'

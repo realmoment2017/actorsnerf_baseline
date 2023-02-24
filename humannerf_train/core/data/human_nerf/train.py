@@ -25,7 +25,7 @@ class Dataset(torch.utils.data.Dataset):
             self, 
             dataset_path,
             keyfilter=None,
-            maxframes=-1,
+            maxframes=301,
             bgcolor=None,
             ray_shoot_mode='image',
             skip=1,
@@ -52,9 +52,56 @@ class Dataset(torch.utils.data.Dataset):
         self.mesh_infos = self.load_train_mesh_infos()
 
         framelist = self.load_train_frames()
-        self.framelist = framelist[::skip]
+
+        import re
+        skip = int(re.split('skip', cfg.logdir)[-1])
         if maxframes > 0:
-            self.framelist = self.framelist[:maxframes]
+            self.framelist = framelist[:maxframes]
+        if cfg.task == 'zju_mocap':
+            self.framelist = self.framelist[::skip][1:]
+        if cfg.task == 'AIST_mocap':
+            self.framelist = self.framelist[::skip][:-4]
+            if cfg.subject == 'd16':
+                # f_idxs = [200,564,824,832,840]
+                # render_framelist = ['frame_000200', 'frame_000832', 'frame_000840']
+                render_framelist = ['frame_000204', 'frame_000832', 'frame_000844']
+            if cfg.subject == 'd17':
+                # f_idxs = [200,564,1228,1240,1252]
+                render_framelist = ['frame_000564', 'frame_001228', 'frame_001252']
+            if cfg.subject == 'd18':
+                # f_idxs = [200,500,708,736,780]
+                render_framelist = ['frame_000204', 'frame_000708', 'frame_000736']
+            if cfg.subject == 'd19':
+                # f_idxs = [212,280,408,556,564]
+                render_framelist = ['frame_000212', 'frame_000408', 'frame_000556']
+            if cfg.subject == 'd20':
+                # f_idxs = [200,240,644,700,712]
+                render_framelist = ['frame_000204', 'frame_000700', 'frame_000712']
+        self.framelist = render_framelist + self.framelist
+
+#        self.framelist = []
+#        if cfg.task == 'zju_mocap':
+#            for idx in [0,75,150,225,300]:
+#                self.framelist.append(framelist[idx])
+#        if cfg.task == 'AIST_mocap':
+#            if cfg.subject == 'd16':
+#                f_idxs = [200,564,824,832,840]
+#            if cfg.subject == 'd17':
+#                f_idxs = [200,564,1228,1240,1252]
+#            if cfg.subject == 'd18':
+#                f_idxs = [200,500,708,736,780]
+#            if cfg.subject == 'd19':
+#                f_idxs = [212,280,408,556,564]
+#            if cfg.subject == 'd20':
+#                f_idxs = [200,240,644,700,712]
+#            select_framelist = []
+#            for f_idx in f_idxs:
+#                f_idx = (f_idx-200)//4
+#                select_framelist.append(framelist[f_idx]) 
+#
+#        self.framelist = select_framelist
+        print(self.framelist)
+
         print(f' -- Total Frames: {self.get_total_frames()}')
 
         self.keyfilter = keyfilter
@@ -296,6 +343,8 @@ class Dataset(torch.utils.data.Dataset):
         return self.get_total_frames()
 
     def __getitem__(self, idx):
+        #torch.manual_seed(0)
+        #np.random.seed(0)
         frame_name = self.framelist[idx]
         results = {
             'frame_name': frame_name
