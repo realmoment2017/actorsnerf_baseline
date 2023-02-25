@@ -1,6 +1,8 @@
 import os
 import pickle
+import re
 
+import random
 import numpy as np
 import cv2
 import torch
@@ -11,15 +13,41 @@ from core.utils.body_util import \
     body_pose_to_body_RTs, \
     get_canonical_global_tfms, \
     approx_gaussian_bone_volumes
+from core.utils.file_util import list_files, split_path
 from core.utils.camera_util import \
+    _update_extrinsics, \
     rotate_camera_by_frame_idx, \
     apply_global_tfm_to_camera, \
     get_rays_from_KRT, \
     rays_intersect_3d_bbox
-from core.utils.file_util import list_files, split_path
 
 from configs import cfg
 
+def rotate_camera_by_angle(
+        extrinsics, 
+        angle, 
+        trans=None,
+        rotate_axis='z',
+        period=360,
+        ):
+    r""" Get camera extrinsics based on frame index and rotation period.
+
+    Args:
+        - extrinsics: Array (3, 3)
+        - frame_idx: Integer
+        - trans: Array (3, )
+        - rotate_axis: String
+        - period: Integer
+
+    Returns:
+        - Array (3, 3)
+    """
+
+    if cfg.task == 'AIST_mocap':
+        rotate_axis = 'y'
+    angle = 2 * np.pi * (angle / period)
+    return _update_extrinsics(
+                extrinsics, angle, trans, rotate_axis)
 
 class Dataset(torch.utils.data.Dataset):
     ROT_CAM_PARAMS = {
@@ -27,56 +55,346 @@ class Dataset(torch.utils.data.Dataset):
         'wild': {'rotate_axis': 'y', 'inv_angle': False}
     }
 
-    def __init__(
-            self, 
-            dataset_path,
-            keyfilter=None,
-            maxframes=-1,
-            skip=1,
-            bgcolor=None,
-            src_type="zju_mocap",
-            **_):
+    def __init__(self, dataset_list):
 
-        print('[Dataset Path]', dataset_path) 
+        self.pose_transfer = False
+        self.target_person_dataset = 'zju_mocap'
+        self.target_person = '396'
+        self.target_frame_start = 0
+        self.target_frame_end = -1
+        self.target_skip = 50
+        self.render_cam_id = 0
+        self.dataset_path = {}
+        self.image_dir = {}
+        self.canonical_joints = {}
+        self.canonical_bbox = {}
+        self.motion_weights_priors = {}
+        self.frame_list = {}
+        self.cameras = {}
+        self.train_mesh_info = {}
+        self.bgcolor = {}
+        self.keyfilter = {}
+        self.src_type = {}
 
-        self.dataset_path = dataset_path
-        self.image_dir = os.path.join(dataset_path, 'images')
+        self.idx_hist = {}
+        total_frames = 0
+        for args in dataset_list:
+            dataset_path = args['dataset_path']
+            print('[Dataset Path]', dataset_path) 
+            frame_start = args['frame_start']
+            frame_end = args['frame_end']
+            keyfilter= args['keyfilter']
+            skip= args['skip']
+            bgcolor= args['bgcolor']
+            src_type= args['src_type']
 
-        self.canonical_joints, self.canonical_bbox = \
-            self.load_canonical_joints()
+            sub_idx = os.path.basename(dataset_path)
 
-        if 'motion_weights_priors' in keyfilter:
-            self.motion_weights_priors = \
-                approx_gaussian_bone_volumes(
-                    self.canonical_joints, 
-                    self.canonical_bbox['min_xyz'],
-                    self.canonical_bbox['max_xyz'],
-                    grid_size=cfg.mweight_volume.volume_size).astype('float32')
+            if cfg.task == 'zju_mocap' or ('smpl_mocap' in cfg.task):
+                # cam_idxs = [3,15]
+                cam_idxs = [self.render_cam_id]
+            elif cfg.task == 'AIST_mocap':
+                cam_idxs = [self.render_cam_id]
+            else:
+                raise Exception("Not implemented")
 
-        cameras = self.load_train_cameras()
-        mesh_infos = self.load_train_mesh_infos()
+            self.dataset_path[sub_idx] = {}
+            self.image_dir[sub_idx] = {}
+            self.canonical_joints[sub_idx] = {}
+            self.canonical_bbox[sub_idx] = {}
+            self.motion_weights_priors[sub_idx] = {}
+            self.frame_list[sub_idx] = {}
+            self.cameras[sub_idx] = {}
+            self.train_mesh_info[sub_idx] = {}
+            if cfg.task == 'zju_mocap' or ('smpl_mocap' in cfg.task):
+                self.bgcolor[sub_idx] = bgcolor if bgcolor is not None else [0., 0., 0.] # sub
+            elif cfg.task == 'AIST_mocap':
+                self.bgcolor[sub_idx] = bgcolor if bgcolor is not None else [255., 255., 255.] # sub
+            self.keyfilter[sub_idx] = keyfilter
+            self.src_type[sub_idx] = src_type
+    
+            dataset_path_ = dataset_path
+            first_camera = True
+            for cam_idx in cam_idxs:
+                dataset_path = dataset_path_
+                dataset_path = os.path.join(dataset_path, str(cam_idx))
+                image_dir = os.path.join(dataset_path, 'images')
 
-        framelist = self.load_train_frames() 
-        self.framelist = framelist[::skip]
-        if maxframes > 0:
-            self.framelist = self.framelist[:maxframes]  
+                if first_camera:
+                    canonical_joints, canonical_bbox = \
+                        self.load_canonical_joints(dataset_path)
+            
+                    if 'motion_weights_priors' in keyfilter:
+                        motion_weights_priors = \
+                            approx_gaussian_bone_volumes(
+                                canonical_joints, 
+                                canonical_bbox['min_xyz'],
+                                canonical_bbox['max_xyz'],
+                                grid_size=cfg.mweight_volume.volume_size).astype('float32')
+        
+                cameras = self.load_train_cameras(dataset_path)
+                mesh_infos = self.load_train_mesh_infos(dataset_path)
+        
+                framelist = self.load_train_frames(dataset_path) 
+                framelist = framelist[frame_start: frame_end]
+                select_framelist = framelist[::skip]
+                num_frames = len(select_framelist)
 
-        self.train_frame_idx = cfg.freeview.frame_idx
-        print(f' -- Frame Idx: {self.train_frame_idx}')
+                select_camera = {}
+                select_train_mesh_info = {}
+                for i, frame_idx in enumerate(select_framelist):
+                    self.idx_hist[i + total_frames] = {'sub_idx': sub_idx, 'cam_idx': cam_idx, 'frame_idx': frame_idx}
+                    select_camera[frame_idx] = cameras[frame_idx]
+                    select_train_mesh_info[frame_idx] = mesh_infos[frame_idx]
+                total_frames += num_frames
+                print(sub_idx, cam_idx, total_frames)
+        
+                self.dataset_path[sub_idx][cam_idx] = dataset_path # sub, cam
+                self.image_dir[sub_idx][cam_idx] = image_dir # sub, cam
+                if first_camera:
+                    self.canonical_joints[sub_idx] = canonical_joints # sub
+                    self.canonical_bbox[sub_idx] = canonical_bbox # sub
+                    if 'motion_weights_priors' in keyfilter:
+                        self.motion_weights_priors[sub_idx] = motion_weights_priors # sub
+                self.frame_list[sub_idx][cam_idx] = select_framelist # sub, cam, frame
+                self.cameras[sub_idx][cam_idx] = select_camera # sub, cam, frame
+                self.train_mesh_info[sub_idx][cam_idx] = select_train_mesh_info # sub, cam, frame
+                first_camera = False
 
-        self.total_frames = cfg.render_frames
+        self.total_frames = total_frames
         print(f' -- Total Rendered Frames: {self.total_frames}')
 
-        self.train_frame_name = framelist[self.train_frame_idx]
-        self.train_camera = cameras[framelist[self.train_frame_idx]]
-        self.train_mesh_info = mesh_infos[framelist[self.train_frame_idx]]
 
-        self.bgcolor = bgcolor if bgcolor is not None else [255., 255., 255.]
-        self.keyfilter = keyfilter
-        self.src_type = src_type
+        # # multiview dataset
+        # if cfg.use_data_cross_pose or cfg.use_data_cross_view:
+        #     self.enc_dataset_path = {}
+        #     self.enc_image_dir = {}
+        #     self.enc_canonical_joints = {}
+        #     self.enc_canonical_bbox = {}
+        #     self.enc_motion_weights_priors = {}
+        #     self.enc_frame_list = {}
+        #     self.enc_cameras = {}
+        #     self.enc_train_mesh_info = {}
+        #     self.enc_bgcolor = {}
+        #     self.enc_keyfilter = {}
+        #     self.enc_src_type = {}
 
-    def load_canonical_joints(self):
-        cl_joint_path = os.path.join(self.dataset_path, 'canonical_joints.pkl')
+        #     self.enc_idx_hist = {}
+        #     self.enc_frame_to_idx = {}
+        #     total_frames = 0
+        #     for args in dataset_list:
+        #         dataset_path = args['dataset_path']
+        #         print('[Dataset Path]', dataset_path) 
+        #         frame_start = args['frame_start']
+        #         frame_end = args['frame_end']
+        #         keyfilter= args['keyfilter']
+        #         skip= args['skip']
+        #         bgcolor= args['bgcolor']
+        #         src_type= args['src_type']
+        #         self.ray_shoot_mode = args['ray_shoot_mode']
+        #         maxframes = -1
+        #         if 'maxframes' in args:
+        #             maxframes = args['maxframes']
+
+        #         ##### setting #####
+        #         frame_start = 0
+        #         frame_end = -1
+        #         skip = 1
+        #         ###################
+
+        #         sub_idx = os.path.basename(dataset_path)
+
+        #         if cfg.task == 'zju_mocap' or ('smpl_mocap' in cfg.task):
+        #             cam_idxs = [0]
+        #         elif cfg.task == 'AIST_mocap':
+        #             cam_idxs = [0]
+        #         else:
+        #             raise Exception("Not implemented")
+
+        #         self.enc_dataset_path[sub_idx] = {}
+        #         self.enc_image_dir[sub_idx] = {}
+        #         self.enc_canonical_joints[sub_idx] = {}
+        #         self.enc_canonical_bbox[sub_idx] = {}
+        #         self.enc_motion_weights_priors[sub_idx] = {}
+        #         self.enc_frame_list[sub_idx] = {}
+        #         self.enc_cameras[sub_idx] = {}
+        #         self.enc_train_mesh_info[sub_idx] = {}
+        #         if cfg.task == 'zju_mocap' or ('smpl_mocap' in cfg.task):
+        #             self.enc_bgcolor[sub_idx] = bgcolor if bgcolor is not None else [0., 0., 0.] # sub
+        #         elif cfg.task == 'AIST_mocap':
+        #             self.enc_bgcolor[sub_idx] = bgcolor if bgcolor is not None else [255., 255., 255.] # sub
+        #         self.enc_keyfilter[sub_idx] = keyfilter
+        #         self.enc_src_type[sub_idx] = src_type
+        
+        #         dataset_path_ = dataset_path
+        #         first_camera = True
+        #         for cam_idx in cam_idxs:
+        #             dataset_path = dataset_path_
+        #             dataset_path = os.path.join(dataset_path, str(cam_idx))
+        #             image_dir = os.path.join(dataset_path, 'images')
+
+        #             if first_camera:
+        #                 canonical_joints, canonical_bbox = \
+        #                     self.load_canonical_joints(dataset_path)
+                
+        #                 if 'motion_weights_priors' in keyfilter:
+        #                     motion_weights_priors = \
+        #                         approx_gaussian_bone_volumes(
+        #                             canonical_joints, 
+        #                             canonical_bbox['min_xyz'],
+        #                             canonical_bbox['max_xyz'],
+        #                             grid_size=cfg.mweight_volume.volume_size).astype('float32')
+            
+        #             cameras = self.load_train_cameras(dataset_path)
+        #             mesh_infos = self.load_train_mesh_infos(dataset_path)
+            
+        #             framelist = self.load_train_frames(dataset_path) 
+        #             framelist = framelist[frame_start: frame_end]
+        #             select_framelist = framelist[::skip]
+        #             num_frames = len(select_framelist)
+
+        #             select_camera = {}
+        #             select_train_mesh_info = {}
+        #             for i, frame_idx in enumerate(select_framelist):
+        #                 self.enc_idx_hist[i + total_frames] = {'sub_idx': sub_idx, 'cam_idx': cam_idx, 'frame_idx': frame_idx}
+        #                 self.enc_frame_to_idx[(sub_idx, cam_idx, frame_idx)] = i + total_frames
+        #                 select_camera[frame_idx] = cameras[frame_idx]
+        #                 select_train_mesh_info[frame_idx] = mesh_infos[frame_idx]
+        #             total_frames += num_frames
+        #             print(sub_idx, cam_idx, total_frames)
+            
+        #             self.enc_dataset_path[sub_idx][cam_idx] = dataset_path # sub, cam
+        #             self.enc_image_dir[sub_idx][cam_idx] = image_dir # sub, cam
+        #             if first_camera:
+        #                 self.enc_canonical_joints[sub_idx] = canonical_joints # sub
+        #                 self.enc_canonical_bbox[sub_idx] = canonical_bbox # sub
+        #                 if 'motion_weights_priors' in keyfilter:
+        #                     self.enc_motion_weights_priors[sub_idx] = motion_weights_priors # sub
+        #             self.enc_frame_list[sub_idx][cam_idx] = select_framelist # sub, cam, frame
+        #             self.enc_cameras[sub_idx][cam_idx] = select_camera # sub, cam, frame
+        #             self.enc_train_mesh_info[sub_idx][cam_idx] = select_train_mesh_info # sub, cam, frame
+        #             first_camera = False
+
+        if self.pose_transfer:
+            # target dataset
+            self.target_dataset_path = {}
+            self.target_image_dir = {}
+            self.target_canonical_joints = {}
+            self.target_canonical_bbox = {}
+            self.target_motion_weights_priors = {}
+            self.target_frame_list = {}
+            self.target_cameras = {}
+            self.target_train_mesh_info = {}
+            self.target_bgcolor = {}
+            self.target_keyfilter = {}
+            self.target_src_type = {}
+
+            self.target_idx_hist = {}
+            self.target_frame_to_idx = {}
+            total_frames = 0
+
+            dataset_path = f"datasets/{self.target_person_dataset}/{self.target_person}"
+
+            print('[Target Dataset Path]', dataset_path) 
+            keyfilter= args['keyfilter']
+            src_type= args['src_type']
+            self.ray_shoot_mode = args['ray_shoot_mode']
+            maxframes = -1
+            if 'maxframes' in args:
+                maxframes = args['maxframes']
+
+            ##### setting #####
+            frame_start = self.target_frame_start
+            frame_end = self.target_frame_end
+            skip= self.target_skip
+            ###################
+
+            sub_idx = os.path.basename(dataset_path)
+
+            if cfg.task == 'zju_mocap':
+                cam_idxs = [self.render_cam_id]
+            elif cfg.task == 'AIST_mocap':
+                cam_idxs = [self.render_cam_id]
+            else:
+                raise Exception("Not implemented")
+
+            self.target_dataset_path[sub_idx] = {}
+            self.target_image_dir[sub_idx] = {}
+            self.target_canonical_joints[sub_idx] = {}
+            self.target_canonical_bbox[sub_idx] = {}
+            self.target_motion_weights_priors[sub_idx] = {}
+            self.target_frame_list[sub_idx] = {}
+            self.target_cameras[sub_idx] = {}
+            self.target_train_mesh_info[sub_idx] = {}
+            if cfg.task == 'zju_mocap':
+                self.target_bgcolor[sub_idx] = [0., 0., 0.] # sub
+            elif cfg.task == 'AIST_mocap':
+                self.target_bgcolor[sub_idx] = [255., 255., 255.] # sub
+            self.target_keyfilter[sub_idx] = keyfilter
+            self.target_src_type[sub_idx] = src_type
+
+            dataset_path_ = dataset_path
+            first_camera = True
+            for cam_idx in cam_idxs:
+                dataset_path = dataset_path_
+                dataset_path = os.path.join(dataset_path, str(cam_idx))
+                image_dir = os.path.join(dataset_path, 'images')
+
+                if first_camera:
+                    canonical_joints, canonical_bbox = \
+                        self.load_canonical_joints(dataset_path)
+            
+                    if 'motion_weights_priors' in keyfilter:
+                        motion_weights_priors = \
+                            approx_gaussian_bone_volumes(
+                                canonical_joints, 
+                                canonical_bbox['min_xyz'],
+                                canonical_bbox['max_xyz'],
+                                grid_size=cfg.mweight_volume.volume_size).astype('float32')
+        
+                cameras = self.load_train_cameras(dataset_path)
+                mesh_infos = self.load_train_mesh_infos(dataset_path)
+        
+                framelist = self.load_train_frames(dataset_path) 
+                framelist = framelist[frame_start: frame_end]
+                select_framelist = framelist[::skip]
+                num_frames = len(select_framelist)
+
+                select_camera = {}
+                select_train_mesh_info = {}
+                for i, frame_idx in enumerate(select_framelist):
+                    self.target_idx_hist[i + total_frames] = {'sub_idx': sub_idx, 'cam_idx': cam_idx, 'frame_idx': frame_idx}
+                    self.target_frame_to_idx[(sub_idx, cam_idx, frame_idx)] = i + total_frames
+                    select_camera[frame_idx] = cameras[frame_idx]
+                    select_train_mesh_info[frame_idx] = mesh_infos[frame_idx]
+                total_frames += num_frames
+                print(sub_idx, cam_idx, total_frames)
+        
+                self.target_dataset_path[sub_idx][cam_idx] = dataset_path # sub, cam
+                self.target_image_dir[sub_idx][cam_idx] = image_dir # sub, cam
+                if first_camera:
+                    self.target_canonical_joints[sub_idx] = canonical_joints # sub
+                    self.target_canonical_bbox[sub_idx] = canonical_bbox # sub
+                    if 'motion_weights_priors' in keyfilter:
+                        self.target_motion_weights_priors[sub_idx] = motion_weights_priors # sub
+                self.target_frame_list[sub_idx][cam_idx] = select_framelist # sub, cam, frame
+                self.target_cameras[sub_idx][cam_idx] = select_camera # sub, cam, frame
+                self.target_train_mesh_info[sub_idx][cam_idx] = select_train_mesh_info # sub, cam, frame
+                first_camera = False
+
+            ################ overwrite body pose / total frames with zju mocap for pose transfer ################
+
+            self.total_frames = total_frames
+
+    def get_freeview_camera(self, target_camera, angle, trans=None):
+        E = rotate_camera_by_angle(
+                extrinsics=target_camera, 
+                angle=angle,
+                trans=trans)
+        return E
+
+    def load_canonical_joints(self, dataset_path):
+        cl_joint_path = os.path.join(dataset_path, 'canonical_joints.pkl')
         with open(cl_joint_path, 'rb') as f:
             cl_joint_data = pickle.load(f)
         canonical_joints = cl_joint_data['joints'].astype('float32')
@@ -84,9 +402,9 @@ class Dataset(torch.utils.data.Dataset):
 
         return canonical_joints, canonical_bbox
 
-    def load_train_cameras(self):
+    def load_train_cameras(self, dataset_path):
         cameras = None
-        with open(os.path.join(self.dataset_path, 'cameras.pkl'), 'rb') as f: 
+        with open(os.path.join(dataset_path, 'cameras.pkl'), 'rb') as f: 
             cameras = pickle.load(f)
         return cameras
 
@@ -100,9 +418,22 @@ class Dataset(torch.utils.data.Dataset):
             'max_xyz': max_xyz
         }
 
-    def load_train_mesh_infos(self):
+    @staticmethod
+    def skeleton_to_canonical_bbox(skeleton):
+        bbox_offset = np.max(skeleton, axis=0) - np.min(skeleton, axis=0)
+        bbox_offset[0] = bbox_offset[0]*0.2
+        bbox_offset[1] = bbox_offset[1]*0.2
+        min_xyz = np.min(skeleton, axis=0) - bbox_offset
+        max_xyz = np.max(skeleton, axis=0) + bbox_offset
+
+        return {
+            'min_xyz': min_xyz,
+            'max_xyz': max_xyz
+        }
+
+    def load_train_mesh_infos(self, dataset_path):
         mesh_infos = None
-        with open(os.path.join(self.dataset_path, 'mesh_infos.pkl'), 'rb') as f:   
+        with open(os.path.join(dataset_path, 'mesh_infos.pkl'), 'rb') as f:   
             mesh_infos = pickle.load(f)
 
         for frame_name in mesh_infos.keys():
@@ -111,46 +442,126 @@ class Dataset(torch.utils.data.Dataset):
 
         return mesh_infos
 
-    def load_train_frames(self):
-        img_paths = list_files(os.path.join(self.dataset_path, 'images'),
+    def load_train_frames(self, dataset_path):
+        img_paths = list_files(os.path.join(dataset_path, 'images'),
                                exts=['.png'])
         return [split_path(ipath)[1] for ipath in img_paths]
-    
-    def query_dst_skeleton(self):
+
+    def query_dst_skeleton(self, sub_idx, cam_idx, frame_idx):
         return {
-            'poses': self.train_mesh_info['poses'].astype('float32'),
+            'poses': self.train_mesh_info[sub_idx][cam_idx][frame_idx]['poses'].astype('float32'),
             'dst_tpose_joints': \
-                self.train_mesh_info['tpose_joints'].astype('float32'),
-            'bbox': self.train_mesh_info['bbox'].copy(),
-            'Rh': self.train_mesh_info['Rh'].astype('float32'),
-            'Th': self.train_mesh_info['Th'].astype('float32')
+                self.train_mesh_info[sub_idx][cam_idx][frame_idx]['tpose_joints'].astype('float32'),
+            'bbox': self.train_mesh_info[sub_idx][cam_idx][frame_idx]['bbox'].copy(),
+            'Rh': self.train_mesh_info[sub_idx][cam_idx][frame_idx]['Rh'].astype('float32'),
+            'Th': self.train_mesh_info[sub_idx][cam_idx][frame_idx]['Th'].astype('float32')
         }
 
-    def get_freeview_camera(self, frame_idx, total_frames, trans=None):
-        E = rotate_camera_by_frame_idx(
-                extrinsics=self.train_camera['extrinsics'], 
-                frame_idx=frame_idx,
-                period=total_frames,
-                trans=trans,
-                **self.ROT_CAM_PARAMS[self.src_type])
-        K = self.train_camera['intrinsics'].copy()
-        K[:2] *= cfg.resize_img_scale
-        return K, E
+    def query_dst_skeleton_target(self, sub_idx, cam_idx, frame_idx):
+        return {
+            'poses': self.target_train_mesh_info[sub_idx][cam_idx][frame_idx]['poses'].astype('float32'),
+            'dst_tpose_joints': \
+                self.target_train_mesh_info[sub_idx][cam_idx][frame_idx]['tpose_joints'].astype('float32'),
+            'bbox': self.target_train_mesh_info[sub_idx][cam_idx][frame_idx]['bbox'].copy(),
+            'Rh': self.target_train_mesh_info[sub_idx][cam_idx][frame_idx]['Rh'].astype('float32'),
+            'Th': self.target_train_mesh_info[sub_idx][cam_idx][frame_idx]['Th'].astype('float32')
+        }
 
-    def load_image(self, frame_name, bg_color):
-        imagepath = os.path.join(self.image_dir, '{}.png'.format(frame_name))
+    def query_dst_skeleton_enc(self, sub_idx, cam_idx, frame_idx):
+        return {
+            'poses': self.enc_train_mesh_info[sub_idx][cam_idx][frame_idx]['poses'].astype('float32'),
+            'dst_tpose_joints': \
+                self.enc_train_mesh_info[sub_idx][cam_idx][frame_idx]['tpose_joints'].astype('float32'),
+            'bbox': self.enc_train_mesh_info[sub_idx][cam_idx][frame_idx]['bbox'].copy(),
+            'Rh': self.enc_train_mesh_info[sub_idx][cam_idx][frame_idx]['Rh'].astype('float32'),
+            'Th': self.enc_train_mesh_info[sub_idx][cam_idx][frame_idx]['Th'].astype('float32')
+        }
+
+
+
+#    def get_freeview_camera(self, frame_idx, total_frames, trans=None):
+#        E = rotate_camera_by_frame_idx(
+#                extrinsics=self.train_camera['extrinsics'], 
+#                frame_idx=frame_idx,
+#                period=total_frames,
+#                trans=trans,
+#                **self.ROT_CAM_PARAMS[self.src_type])
+#        K = self.train_camera['intrinsics'].copy()
+#        K[:2] *= cfg.resize_img_scale
+#        return K, E
+
+    def load_image(self, sub_idx, cam_idx, frame_name, bg_color):
+        imagepath = os.path.join(self.image_dir[sub_idx][cam_idx], '{}.png'.format(frame_name))
         orig_img = np.array(load_image(imagepath))
 
-        maskpath = os.path.join(self.dataset_path, 
+        maskpath = os.path.join(self.dataset_path[sub_idx][cam_idx], 
                                 'masks', 
                                 '{}.png'.format(frame_name))
         alpha_mask = np.array(load_image(maskpath))
         
-        if 'distortions' in self.train_camera:
-            K = self.train_camera['intrinsics']
-            D = self.train_camera['distortions']
+        if 'distortions' in self.cameras[sub_idx][cam_idx][frame_name]:
+            K = self.cameras[sub_idx][cam_idx][frame_name]['intrinsics']
+            D = self.cameras[sub_idx][cam_idx][frame_name]['distortions']
             orig_img = cv2.undistort(orig_img, K, D)
             alpha_mask = cv2.undistort(alpha_mask, K, D)
+
+        alpha_mask = alpha_mask / 255.
+        img = alpha_mask * orig_img + (1.0 - alpha_mask) * bg_color[None, None, :]
+        if cfg.resize_img_scale != 1.:
+            img = cv2.resize(img, None, 
+                             fx=cfg.resize_img_scale,
+                             fy=cfg.resize_img_scale,
+                             interpolation=cv2.INTER_LANCZOS4)
+            alpha_mask = cv2.resize(alpha_mask, None, 
+                                    fx=cfg.resize_img_scale,
+                                    fy=cfg.resize_img_scale,
+                                    interpolation=cv2.INTER_LINEAR)
+                                
+        return img, alpha_mask
+
+    def load_image_enc(self, sub_idx, cam_idx, frame_name, bg_color):
+        imagepath = os.path.join(self.enc_image_dir[sub_idx][cam_idx], '{}.png'.format(frame_name))
+        orig_img = np.array(load_image(imagepath))
+
+        maskpath = os.path.join(self.enc_dataset_path[sub_idx][cam_idx], 
+                                'masks', 
+                                '{}.png'.format(frame_name))
+        alpha_mask = np.array(load_image(maskpath))
+        
+#        if 'distortions' in self.enc_cameras[sub_idx][cam_idx][frame_name]:
+#            K = self.enc_cameras[sub_idx][cam_idx][frame_name]['intrinsics']
+#            D = self.enc_cameras[sub_idx][cam_idx][frame_name]['distortions']
+#            orig_img = cv2.undistort(orig_img, K, D)
+#            alpha_mask = cv2.undistort(alpha_mask, K, D)
+
+        alpha_mask = alpha_mask / 255.
+        img = alpha_mask * orig_img + (1.0 - alpha_mask) * bg_color[None, None, :]
+        if cfg.resize_img_scale != 1.:
+            img = cv2.resize(img, None, 
+                             fx=cfg.resize_img_scale,
+                             fy=cfg.resize_img_scale,
+                             interpolation=cv2.INTER_LANCZOS4)
+            alpha_mask = cv2.resize(alpha_mask, None, 
+                                    fx=cfg.resize_img_scale,
+                                    fy=cfg.resize_img_scale,
+                                    interpolation=cv2.INTER_LINEAR)
+                                
+        return img, alpha_mask
+
+    def load_image_target(self, sub_idx, cam_idx, frame_name, bg_color):
+        imagepath = os.path.join(self.target_image_dir[sub_idx][cam_idx], '{}.png'.format(frame_name))
+        orig_img = np.array(load_image(imagepath))
+
+        maskpath = os.path.join(self.target_dataset_path[sub_idx][cam_idx], 
+                                'masks', 
+                                '{}.png'.format(frame_name))
+        alpha_mask = np.array(load_image(maskpath))
+        
+        # if 'distortions' in self.target_cameras[sub_idx][cam_idx][frame_name]:
+        #     K = self.target_cameras[sub_idx][cam_idx][frame_name]['intrinsics']
+        #     D = self.target_cameras[sub_idx][cam_idx][frame_name]['distortions']
+        #     orig_img = cv2.undistort(orig_img, K, D)
+        #     alpha_mask = cv2.undistort(alpha_mask, K, D)
 
         alpha_mask = alpha_mask / 255.
         img = alpha_mask * orig_img + (1.0 - alpha_mask) * bg_color[None, None, :]
@@ -169,35 +580,251 @@ class Dataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.total_frames
 
+    # def load_smpl_vertices(self, sub_idx, cam_idx, frame_name, dst_skel_info):
+    #     i = int(frame_name[-6:])
+    #     # read xyz in the world coordinate system
+    #     vertices_path = os.path.join(os.path.dirname(self.enc_dataset_path[sub_idx][cam_idx]), 'new_vertices',
+    #                                  '{}.npy'.format(i))
+    #     wxyz = np.load(vertices_path).astype(np.float32)
+
+    #     # transform smpl from the world coordinate to the smpl coordinate
+    #     Rh = dst_skel_info['Rh'].astype(np.float32)
+    #     Th = dst_skel_info['Th'].astype(np.float32)
+
+    #     # prepare sp input of param pose
+    #     R = cv2.Rodrigues(Rh)[0].astype(np.float32)
+    #     pxyz = np.dot(wxyz - Th, R).astype(np.float32)
+    #     if 'smpl_mocap' in cfg.task:
+    #         pxyz = wxyz
+    #     return pxyz
+
+    # def prepare_input_(self, sub_idx, cam_idx, frame_name, dst_skel_info):
+    #     i = int(frame_name[-6:])
+    #     # read xyz in the world coordinate system
+    #     vertices_path = os.path.join(os.path.dirname(self.dataset_path[sub_idx][cam_idx]), 'new_vertices',
+    #                                  '{}.npy'.format(i))
+    #     wxyz = np.load(vertices_path).astype(np.float32)
+
+    #     # transform smpl from the world coordinate to the smpl coordinate
+    #     Rh = dst_skel_info['Rh'].astype(np.float32)
+    #     Th = dst_skel_info['Th'].astype(np.float32)
+
+    #     # prepare sp input of param pose
+    #     R = cv2.Rodrigues(Rh)[0].astype(np.float32)
+    #     pxyz = np.dot(wxyz - Th, R).astype(np.float32)
+    #     if 'smpl_mocap' in cfg.task:
+    #         pxyz = wxyz
+
+    #     # pbw = np.load(os.path.join(self.lbs_root, 'bweights/{}.npy'.format(i)))
+    #     # pbw = pbw.astype(np.float32)
+    #     tvertices_path = os.path.join(os.path.dirname(self.dataset_path[sub_idx][cam_idx]), 'lbs/tvertices.npy')
+    #     txyz = np.load(tvertices_path).astype(np.float32)
+
+    #     # tbw_path = os.path.join(os.path.dirname(self.dataset_path[sub_idx][cam_idx]), 'lbs/tbw.npy')
+    #     # tbw = np.load(tbw_path).astype(np.float32)
+
+    #     tbbox = self.canonical_bbox[sub_idx]
+    #     # joints = self.canonical_joints[sub_idx]
+
+    #     # construct the coordinate
+    #     dhw = txyz[:, [2, 1, 0]]
+    #     min_xyz = tbbox['min_xyz']
+    #     max_xyz = tbbox['max_xyz']
+    #     min_dhw = min_xyz[[2, 1, 0]]
+    #     max_dhw = max_xyz[[2, 1, 0]]
+    #     voxel_size = np.array(cfg.voxel_size)
+    #     txyz_coord = np.round((dhw - min_dhw) / voxel_size).astype(np.int32)
+
+    #     # construct the output shape
+    #     txyz_shape = np.ceil((max_dhw - min_dhw) / voxel_size).astype(np.int32)
+    #     txyz_shape = (txyz_shape | (8 - 1)) + 1
+    #     txyz_dic = {'txyz': txyz, 
+    #                 'txyz_coord': txyz_coord,
+    #                 'txyz_shape': txyz_shape,
+    #                 }
+
+    #     # construct the pxyz coordinate
+    #     dhw = pxyz[:, [2, 1, 0]]
+    #     min_xyz = np.min(pxyz, axis=0) - 0.05
+    #     max_xyz = np.max(pxyz, axis=0) + 0.05
+    #     min_dhw = min_xyz[[2, 1, 0]]
+    #     max_dhw = max_xyz[[2, 1, 0]]
+    #     voxel_size = np.array(cfg.voxel_size)
+    #     pxyz_coord = np.round((dhw - min_dhw) / voxel_size).astype(np.int32)
+
+    #     # construct the output shape
+    #     pxyz_shape = np.ceil((max_dhw - min_dhw) / voxel_size).astype(np.int32)
+    #     pxyz_shape = (pxyz_shape | (32 - 1)) + 1
+
+    #     pxyz_dic = {'pxyz': pxyz, 
+    #                 'pxyz_coord': pxyz_coord,
+    #                 'pxyz_shape': pxyz_shape,
+    #                 'pxyz_bbox_min': np.min(pxyz, axis=0) - 0.05,
+    #                 'pxyz_bbox_max': np.max(pxyz, axis=0) + 0.05,
+    #                 }
+
+    #     return pxyz, txyz_dic, pxyz_dic
+
+    # def prepare_input(self, sub_idx, cam_idx):
+    #     # i = int(frame_name[-6:])
+    #     # # read xyz in the world coordinate system
+    #     # vertices_path = os.path.join(os.path.dirname(self.target_dataset_path[target_sub_idx][target_cam_idx]), 'new_vertices',
+    #     #                              '{}.npy'.format(i))
+    #     # wxyz = np.load(vertices_path).astype(np.float32)
+
+    #     # # transform smpl from the world coordinate to the smpl coordinate
+    #     # Rh = dst_skel_info['Rh'].astype(np.float32)
+    #     # Th = dst_skel_info['Th'].astype(np.float32)
+
+    #     # # prepare sp input of param pose
+    #     # R = cv2.Rodrigues(Rh)[0].astype(np.float32)
+    #     # pxyz = np.dot(wxyz - Th, R).astype(np.float32)
+
+    #     # pbw = np.load(os.path.join(self.lbs_root, 'bweights/{}.npy'.format(i)))
+    #     # pbw = pbw.astype(np.float32)
+    #     tvertices_path = os.path.join(os.path.dirname(self.dataset_path[sub_idx][cam_idx]), 'lbs/tvertices.npy')
+    #     txyz = np.load(tvertices_path).astype(np.float32)
+
+    #     # tbw_path = os.path.join(os.path.dirname(self.dataset_path[sub_idx][cam_idx]), 'lbs/tbw.npy')
+    #     # tbw = np.load(tbw_path).astype(np.float32)
+
+    #     tbbox = self.canonical_bbox[sub_idx]
+    #     # joints = self.canonical_joints[sub_idx]
+
+    #     # construct the coordinate
+    #     dhw = txyz[:, [2, 1, 0]]
+    #     min_xyz = tbbox['min_xyz']
+    #     max_xyz = tbbox['max_xyz']
+    #     min_dhw = min_xyz[[2, 1, 0]]
+    #     max_dhw = max_xyz[[2, 1, 0]]
+    #     voxel_size = np.array(cfg.voxel_size)
+    #     txyz_coord = np.round((dhw - min_dhw) / voxel_size).astype(np.int32)
+
+    #     # construct the output shape
+    #     txyz_shape = np.ceil((max_dhw - min_dhw) / voxel_size).astype(np.int32)
+    #     txyz_shape = (txyz_shape | (8 - 1)) + 1
+    #     txyz_dic = {'txyz': txyz, 
+    #                 'txyz_coord': txyz_coord,
+    #                 'txyz_shape': txyz_shape,
+    #                 }
+
+    #     # # construct the pxyz coordinate
+    #     # dhw = pxyz[:, [2, 1, 0]]
+    #     # min_xyz = np.min(pxyz, axis=0) - 0.05
+    #     # max_xyz = np.max(pxyz, axis=0) + 0.05
+    #     # min_dhw = min_xyz[[2, 1, 0]]
+    #     # max_dhw = max_xyz[[2, 1, 0]]
+    #     # voxel_size = np.array(cfg.voxel_size)
+    #     # pxyz_coord = np.round((dhw - min_dhw) / voxel_size).astype(np.int32)
+
+    #     # # construct the output shape
+    #     # pxyz_shape = np.ceil((max_dhw - min_dhw) / voxel_size).astype(np.int32)
+    #     # pxyz_shape = (pxyz_shape | (32 - 1)) + 1
+
+    #     # pxyz_dic = {'pxyz': pxyz, 
+    #     #             'pxyz_coord': pxyz_coord,
+    #     #             'pxyz_shape': pxyz_shape,
+    #     #             'pxyz_bbox_min': np.min(pxyz, axis=0) - 0.05,
+    #     #             'pxyz_bbox_max': np.max(pxyz, axis=0) + 0.05,
+    #     #             }
+
+    #     return np.zeros((6890,3)), txyz_dic, {}
+
+
+
+
     def __getitem__(self, idx):
-        frame_name = self.train_frame_name
-        results = {
-            'frame_name': frame_name
-        }
 
-        bgcolor = np.array(self.bgcolor, dtype='float32')
+        if self.pose_transfer:
+            sub_idx = self.idx_hist[0]['sub_idx']
+            cam_idx = self.idx_hist[0]['cam_idx']
+            target_sub_idx = self.target_person
+            target_cam_idx = self.target_idx_hist[idx]['cam_idx']
+            target_frame_idx = self.target_idx_hist[idx]['frame_idx']
+            frame_idx = target_frame_idx
+            results = {
+                'sub_idx': sub_idx,
+                'cam_idx': cam_idx,
+                'frame_name': target_frame_idx,
+            }
+        else:
+            sub_idx = self.idx_hist[idx]['sub_idx']
+            cam_idx = self.idx_hist[idx]['cam_idx']
+            frame_idx = self.idx_hist[idx]['frame_idx']
+            frame_name = frame_idx
+            results = {
+                'sub_idx': sub_idx,
+                'cam_idx': cam_idx,
+                'frame_name': frame_name,
+            }
 
-        img, _ = self.load_image(frame_name, bgcolor)
-        img = img / 255.
+        bgcolor = np.array(self.bgcolor[sub_idx], dtype='float32')
+
+        ########### target human ###############
+        if cfg.task == 'AIST_mocap':
+            img = np.ones((540, 960, 3))
+        if cfg.task == 'zju_mocap':
+            img = np.zeros((512, 512, 3))
+        img = (img / 255.).astype('float32')
         H, W = img.shape[0:2]
 
-        dst_skel_info = self.query_dst_skeleton()
-        dst_bbox = dst_skel_info['bbox']
-        dst_poses = dst_skel_info['poses']
-        dst_tpose_joints = dst_skel_info['dst_tpose_joints']
-        dst_Rh = dst_skel_info['Rh']
-        dst_Th = dst_skel_info['Th']
+        temp = [*self.cameras[sub_idx][cam_idx].keys()]
+        ########### target human ###############
+        if self.pose_transfer:
+            # overwrite dst_skel_info
+            dst_skel_info = self.query_dst_skeleton_target(target_sub_idx, target_cam_idx, target_frame_idx)
+            dst_bbox = dst_skel_info['bbox']
+            dst_poses = dst_skel_info['poses']
+            dst_tpose_joints = dst_skel_info['dst_tpose_joints']
+            dst_Rh = dst_skel_info['Rh']
+            dst_Th = dst_skel_info['Th']
+            if cfg.task != self.target_person_dataset:
+                dst_skel_info = self.query_dst_skeleton(sub_idx, cam_idx, temp[0])
+                dst_Rh = dst_skel_info['Rh']
+                dst_Th = dst_skel_info['Th']
+        else:
+            dst_skel_info = self.query_dst_skeleton(sub_idx, cam_idx, frame_idx)
+            dst_bbox = dst_skel_info['bbox']
+            dst_poses = dst_skel_info['poses']
+            dst_tpose_joints = dst_skel_info['dst_tpose_joints']
+            dst_Rh = dst_skel_info['Rh']
+            dst_Th = dst_skel_info['Th']
 
-        K, E = self.get_freeview_camera(
-                        frame_idx=idx,
-                        total_frames=self.total_frames,
+        # smpl_vertices, txyz_dic, pxyz_dic = self.prepare_input(sub_idx, cam_idx)
+        #dst_bbox['min_xyz'] = pxyz_dic['pxyz_bbox_min']
+        #dst_bbox['max_xyz'] = pxyz_dic['pxyz_bbox_max']
+
+        def rotate_cam(E, idx):
+            # example camera
+            # E = np.array([[-9.39188518e-01,  3.43400162e-01, -1.09753139e-03,  3.71332096e-01],                                                                                                                                      
+            #     [-1.12095222e-01, -3.03552743e-01,  9.46197847e-01,  9.24659496e-01],
+            #     [ 3.24591342e-01,  8.88781180e-01,  3.23586788e-01,  2.83248315e+00],
+            #     [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])
+            angle = -(idx%30)*(1/30) * 360
+            E = self.get_freeview_camera(
+                        target_camera=E.copy(),
+                        angle=angle,
                         trans=dst_Th)
+            return E
+
+        # if self.pose_transfer:
+        #     K = self.target_cameras[target_sub_idx][target_cam_idx][target_frame_idx]['intrinsics'][:3, :3].copy()
+        #     E = self.target_cameras[target_sub_idx][target_cam_idx][target_frame_idx]['extrinsics']
+        # else:
+        K = self.cameras[sub_idx][cam_idx][temp[0]]['intrinsics'][:3, :3].copy()
+        E = self.cameras[sub_idx][cam_idx][temp[0]]['extrinsics']
+        # E = rotate_cam(E, idx)
+        K[:2] *= cfg.resize_img_scale
+
+
         E = apply_global_tfm_to_camera(
                 E=E, 
                 Rh=dst_Rh,
                 Th=dst_Th)
         R = E[:3, :3]
         T = E[:3, 3]
+        cam_R = E[:3, :3]
+        cam_T = E[:3, 3].reshape(3, 1)
 
         rays_o, rays_d = get_rays_from_KRT(H, W, K, R, T)
         rays_o = rays_o.reshape(-1, 3) # (H, W, 3) --> (N_rays, 3)
@@ -213,8 +840,16 @@ class Dataset(torch.utils.data.Dataset):
     
         batch_rays = np.stack([rays_o, rays_d], axis=0) 
 
-        if 'rays' in self.keyfilter:
+        if 'rays' in self.keyfilter[sub_idx]:
             results.update({
+                'img': img,
+                # 'smpl_vertices': smpl_vertices,
+                # 'dst_bbox': dst_bbox,
+                # 'txyz_dic': txyz_dic,
+                # 'pxyz_dic': pxyz_dic,
+                'cam_K': K,
+                'cam_R': cam_R,
+                'cam_T': cam_T,
                 'img_width': W,
                 'img_height': H,
                 'ray_mask': ray_mask,
@@ -223,26 +858,26 @@ class Dataset(torch.utils.data.Dataset):
                 'far': far,
                 'bgcolor': bgcolor})
 
-        if 'target_rgbs' in self.keyfilter:
+        if 'target_rgbs' in self.keyfilter[sub_idx]:
             results['target_rgbs'] = img
 
-        if 'motion_bases' in self.keyfilter:
+        if 'motion_bases' in self.keyfilter[sub_idx]:
             dst_Rs, dst_Ts = body_pose_to_body_RTs(
                     dst_poses, dst_tpose_joints)
-            cnl_gtfms = get_canonical_global_tfms(self.canonical_joints)
+            cnl_gtfms = get_canonical_global_tfms(self.canonical_joints[sub_idx])
             results.update({
                 'dst_Rs': dst_Rs,
                 'dst_Ts': dst_Ts,
                 'cnl_gtfms': cnl_gtfms
-            })                                    
+            })
 
-        if 'motion_weights_priors' in self.keyfilter:
-            results['motion_weights_priors'] = \
-                self.motion_weights_priors.copy()
+        if 'motion_weights_priors' in self.keyfilter[sub_idx]:
+            results['motion_weights_priors'] = self.motion_weights_priors[sub_idx].copy()
 
-        if 'cnl_bbox' in self.keyfilter:
-            min_xyz = self.canonical_bbox['min_xyz'].astype('float32')
-            max_xyz = self.canonical_bbox['max_xyz'].astype('float32')
+        # get the bounding box of canonical volume
+        if 'cnl_bbox' in self.keyfilter[sub_idx]:
+            min_xyz = self.canonical_bbox[sub_idx]['min_xyz'].astype('float32')
+            max_xyz = self.canonical_bbox[sub_idx]['max_xyz'].astype('float32')
             results.update({
                 'cnl_bbox_min_xyz': min_xyz,
                 'cnl_bbox_max_xyz': max_xyz,
@@ -250,7 +885,7 @@ class Dataset(torch.utils.data.Dataset):
             })
             assert np.all(results['cnl_bbox_scale_xyz'] >= 0)
 
-        if 'dst_posevec_69' in self.keyfilter:
+        if 'dst_posevec_69' in self.keyfilter[sub_idx]:
             # 1. ignore global orientation
             # 2. add a small value to avoid all zeros
             dst_posevec_69 = dst_poses[3:] + 1e-2
@@ -258,5 +893,140 @@ class Dataset(torch.utils.data.Dataset):
                 'dst_posevec': dst_posevec_69,
             })
 
+#         # multiview data
+#         data_enc = {}
+#         num_aug_frames = 3
+#         ##### setting frame300_skip75 #####
+#         ablation_type = int(re.split('skip', cfg.logdir)[-1])
+#         if results['sub_idx']=='387':
+#             if ablation_type==1:
+#                  render_frame_names = ['frame_000075', 'frame_000225', 'frame_000300']
+#             if ablation_type==3:
+#                  render_frame_names = ['frame_000075', 'frame_000225', 'frame_000300']
+#             if ablation_type==5:
+#                  render_frame_names = ['frame_000075', 'frame_000225', 'frame_000300']
+#             if ablation_type==10:
+#                  render_frame_names = ['frame_000080', 'frame_000230', 'frame_000300']
+#             if ablation_type==30:
+#                  render_frame_names = ['frame_000090', 'frame_000240', 'frame_000300']
+#             if ablation_type==60:
+#                 render_frame_names = ['frame_000075', 'frame_000225', 'frame_000300']
+
+#         if results['sub_idx']=='393':
+#             if ablation_type==1:
+#                  render_frame_names = ['frame_000075', 'frame_000150', 'frame_000300']
+#             if ablation_type==3:
+#                  render_frame_names = ['frame_000075', 'frame_000150', 'frame_000300']
+#             if ablation_type==5:
+#                  render_frame_names = ['frame_000075', 'frame_000150', 'frame_000300']
+#             if ablation_type==10:
+#                  render_frame_names = ['frame_000080', 'frame_000150', 'frame_000300']
+#             if ablation_type==30:
+#                  render_frame_names = ['frame_000090', 'frame_000150', 'frame_000300']
+#             if ablation_type==60:
+#                 render_frame_names = ['frame_000075', 'frame_000150', 'frame_000300']
+
+#         if results['sub_idx']=='394':
+#             if ablation_type==1:
+#                  render_frame_names = ['frame_000001', 'frame_000150', 'frame_000300']
+#             if ablation_type==3:
+#                  render_frame_names = ['frame_000003', 'frame_000150', 'frame_000300']
+#             if ablation_type==5:
+#                  render_frame_names = ['frame_000005', 'frame_000150', 'frame_000300']
+#             if ablation_type==10:
+#                  render_frame_names = ['frame_000010', 'frame_000150', 'frame_000300']
+#             if ablation_type==30:
+#                  render_frame_names = ['frame_000030', 'frame_000150', 'frame_000300']
+#             if ablation_type==60:
+#                 render_frame_names = ['frame_000000', 'frame_000150', 'frame_000300']
+
+#         ###### AIST #####
+#         elif cfg.task == 'AIST_mocap':
+#             if results['sub_idx']=='d16':
+#                 render_frame_names = ['frame_000200', 'frame_000832', 'frame_000840']
+#             if results['sub_idx']=='d17':
+#                 render_frame_names = ['frame_000564', 'frame_001228', 'frame_001252']
+#             if results['sub_idx']=='d18':
+#                 render_frame_names = ['frame_000200', 'frame_000708', 'frame_000736']
+#             if results['sub_idx']=='d19':
+#                 render_frame_names = ['frame_000212', 'frame_000408', 'frame_000556']
+#             if results['sub_idx']=='d20':
+#                 render_frame_names = ['frame_000200', 'frame_000700', 'frame_000712']
+#             else:
+#                 render_frame_names = ['frame_000200', 'frame_000600', 'frame_000996']
+#         ##################################
+
+#         ##### setting frame100_skip1 #####
+# #        render_frame_names = ['frame_000000', 'frame_000075', 'frame_000099']
+#         ##################################
+#         if cfg.use_data_cross_pose or cfg.use_data_cross_view:
+#             for aug_idx in range(num_aug_frames):
+
+#                 render_sub_idx = results['sub_idx']
+#                 render_cam_idx = results['cam_idx']
+#                 render_cam_idx = 0
+#                 render_frame_name = np.random.choice(self.enc_frame_list[render_sub_idx][render_cam_idx], 1).item()
+#                 ########### setting ##########
+#                 render_frame_name = render_frame_names[aug_idx]
+#                 ##############################
+#                 idx = self.enc_frame_to_idx[(render_sub_idx, render_cam_idx, render_frame_name)]
+#                 # print(render_sub_idx, cam_idxs[aug_idx], render_frame_name, idx, frame_idx)
+
+#                 sub_idx = self.enc_idx_hist[idx]['sub_idx']
+#                 cam_idx = self.enc_idx_hist[idx]['cam_idx']
+#                 frame_idx = self.enc_idx_hist[idx]['frame_idx']
+#                 frame_name = frame_idx
+#                 data_enc[aug_idx] = {}
+#                 data_enc[aug_idx]['sub_idx'] = sub_idx
+#                 data_enc[aug_idx]['cam_idx'] = cam_idx
+#                 data_enc[aug_idx]['frame_name'] = frame_name
+
+#                 bgcolor = np.array(self.enc_bgcolor[sub_idx], dtype='float32')
+
+#                 img, mask = self.load_image_enc(sub_idx, cam_idx, frame_idx, bgcolor)
+#                 img = (img / 255.).astype('float32')
+#                 H, W = img.shape[0:2]
+
+#                 dst_skel_info = self.query_dst_skeleton_enc(sub_idx, cam_idx, frame_idx)
+#                 dst_bbox = dst_skel_info['bbox']
+#                 dst_poses = dst_skel_info['poses']
+#                 dst_tpose_joints = dst_skel_info['dst_tpose_joints']
+#                 dst_Rh = dst_skel_info['Rh']
+#                 dst_Th = dst_skel_info['Th']
+
+#                 smpl_vertices = self.load_smpl_vertices(render_sub_idx, render_cam_idx, frame_name, dst_skel_info)
+
+#                 assert frame_idx in self.enc_cameras[sub_idx][cam_idx]
+#                 K = self.enc_cameras[sub_idx][cam_idx][frame_name]['intrinsics'][:3, :3].copy()
+#                 K[:2] *= cfg.resize_img_scale
+
+#                 E = self.enc_cameras[sub_idx][cam_idx][frame_idx]['extrinsics']
+#                 E = apply_global_tfm_to_camera(
+#                         E=E, 
+#                         Rh=dst_Rh,
+#                         Th=dst_Th)
+#                 R = E[:3, :3]
+#                 T = E[:3, 3]
+#                 cam_R = E[:3, :3]
+#                 cam_T = E[:3, 3].reshape(3, 1)
+
+#                 if 'rays' in self.enc_keyfilter[sub_idx]:
+#                     data_enc[aug_idx]['img'] = img
+#                     data_enc[aug_idx]['mask'] = mask
+#                     data_enc[aug_idx]['cam_K'] = K.copy()
+#                     data_enc[aug_idx]['cam_R'] = cam_R
+#                     data_enc[aug_idx]['cam_T'] = cam_T
+#                     data_enc[aug_idx]['bgcolor'] = bgcolor
+#                     data_enc[aug_idx]['smpl_vertices'] = smpl_vertices
+
+#                 if 'motion_bases' in self.enc_keyfilter[sub_idx]:
+#                     dst_Rs, dst_Ts = body_pose_to_body_RTs(
+#                             dst_poses, dst_tpose_joints)
+#                     cnl_gtfms = get_canonical_global_tfms(self.canonical_joints[sub_idx])
+#                     data_enc[aug_idx]['dst_Rs'] = dst_Rs
+#                     data_enc[aug_idx]['dst_Ts'] = dst_Ts
+#                     data_enc[aug_idx]['cnl_gtfms'] = cnl_gtfms
+
+#             results["data_enc"] = data_enc
 
         return results

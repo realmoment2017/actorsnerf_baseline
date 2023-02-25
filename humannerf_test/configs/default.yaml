@@ -95,11 +95,10 @@ movement:
   shuffle: False
   drop_last: False
 
-freeview:
+eval_freeview:
   batch_size: 1
   shuffle: False
   drop_last: False
-  frame_idx: 0
 
 tpose:
   batch_size: 1

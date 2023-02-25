@@ -12,6 +12,7 @@ from core.utils.image_util import ImageWriter_Category, to_8b_image, to_8b3ch_im
 from configs import cfg, args
 from core.evaluator import Evaluator
 
+from moviepy.editor import *
 # import kornia
 
 EXCLUDE_KEYS_TO_GPU = ['frame_name', 'sub_idx', 'cam_idx'
@@ -173,7 +174,10 @@ def _eval(
         if data_type in ['eval_novel_view', 'eval_novel_pose']:
             H, W, _ = batch['target_rgbs'].shape
             mask = ray_mask.detach().cpu().numpy().reshape(H, W)
-            eval_pred_rgb = np.zeros((H, W, 3))
+            if cfg.task=='zju_mocap':
+                eval_pred_rgb = np.zeros((H, W, 3))
+            if cfg.task=='AIST_mocap':
+                eval_pred_rgb = np.ones((H, W, 3))
             eval_pred_rgb[mask>0] = rgb.detach().cpu().numpy()
             eval_gt_rgb = batch['target_rgbs'].detach().cpu().numpy()
             evaluator.evaluate(eval_pred_rgb, eval_gt_rgb)
@@ -182,6 +186,63 @@ def _eval(
         evaluator.summarize()
 
     writer.finalize()
+
+
+def _eval_freeview(
+        data_type=None,
+        dataset_mode='ins_level',
+        folder_name=None):
+    cfg.perturb = 0.
+
+    model = load_network()
+    test_loader = create_dataloader(data_type, dataset_mode)
+
+    writer = ImageWriter_Category(
+                output_dir=os.path.join(cfg.logdir, cfg.load_net),
+                exp_name=folder_name)
+
+    model.eval()
+    imgs = []
+    for batch in tqdm(test_loader):
+        #batch = batch[0]
+        for k, v in batch.items():
+            if k=="data_enc" or k=='txyz_dic' or k=='pxyz_dic' or k=='dst_bbox':
+                batch[k] = v
+            else:
+                batch[k] = v[0]
+
+        data = cpu_data_to_gpu(
+                    batch,
+                    exclude_keys=EXCLUDE_KEYS_TO_GPU)
+
+        data['iter_val'] = torch.full((1,), 1000000).cuda()
+        with torch.no_grad():
+            net_output = model(**data)
+
+        rgb = net_output['rgb']
+        alpha = net_output['alpha']
+
+        width = batch['img_width']
+        height = batch['img_height']
+        ray_mask = batch['ray_mask']
+        target_rgbs = batch.get('target_rgbs', None)
+
+        rgb_img, alpha_img, _ = unpack_to_image(
+            width, height, ray_mask, np.array(cfg.bgcolor) / 255.,
+            rgb.data.cpu().numpy(),
+            alpha.data.cpu().numpy())
+
+        writer.append(batch, rgb_img)
+        imgs.append(rgb_img)
+        img_out = np.stack(imgs, axis=0)
+
+    writer.finalize()
+    save_path = os.path.join(cfg.logdir, cfg.load_net, folder_name)
+    import torchvision
+    torchvision.io.write_video(save_path+'/result.mp4', torch.tensor(img_out), fps=10, video_codec='h264', options={'crf': '10'})
+    videoClip  = VideoFileClip(save_path+'/result.mp4')
+    videoClip.write_gif(save_path+'/result.gif')
+
 
 
 def run_eval_novel_view():
@@ -201,6 +262,12 @@ def run_tpose():
         data_type='tpose',
         dataset_mode='cat_level',
         folder_name=f"tpose")
+
+def run_eval_freeview():
+    _eval_freeview(
+        data_type='eval_freeview',
+        dataset_mode='cat_level',
+        folder_name=f"eval_freeview")
         
 if __name__ == '__main__':
     globals()[f'run_{args.type}']()
