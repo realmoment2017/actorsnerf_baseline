@@ -63,7 +63,7 @@ class Dataset(torch.utils.data.Dataset):
         self.target_frame_start = 0
         self.target_frame_end = -1
         self.target_skip = 50
-        self.render_cam_id = 0
+        self.render_cam_id = 4
         self.dataset_path = {}
         self.image_dir = {}
         self.canonical_joints = {}
