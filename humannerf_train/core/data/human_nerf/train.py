@@ -60,7 +60,10 @@ class Dataset(torch.utils.data.Dataset):
         if cfg.task == 'zju_mocap':
             maxframes = 301
             self.framelist = framelist[:maxframes]
-            self.framelist = self.framelist[::skip][1:]
+            if skip==60:
+                self.framelist = self.framelist[::75][0:]
+            else:
+                self.framelist = self.framelist[::skip][1:]
         if cfg.task == 'AIST_mocap':
 
             if skip==60:
