@@ -55,7 +55,7 @@ def create_dataset(data_type='train', dataset_mode='ins_level'):
                 args['skip'] = 1
             if data_type in ['freeview', 'tpose']:
                 args['skip'] = cfg.render_skip
-            if data_type in ['eval_novel_view', 'eval_novel_pose', 'eval_pose_transfer', 'eval_freeview']:
+            if data_type in ['eval_novel_view', 'eval_novel_pose', 'eval_freeview', 'eval_pose_transfer']:
                 args['skip'] = cfg.render_skip
             dataset_list.append(args)
     

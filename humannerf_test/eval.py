@@ -14,6 +14,7 @@ from core.evaluator import Evaluator
 
 from moviepy.editor import *
 # import kornia
+import cv2
 
 EXCLUDE_KEYS_TO_GPU = ['frame_name', 'sub_idx', 'cam_idx'
                        'img_width', 'img_height', 'ray_mask']
@@ -231,6 +232,13 @@ def _eval_freeview(
             width, height, ray_mask, np.array(cfg.bgcolor) / 255.,
             rgb.data.cpu().numpy(),
             alpha.data.cpu().numpy())
+
+        # define the alpha and beta
+        alpha = 1.2 # Contrast control
+        beta = 10 # Brightness control
+        
+        # call convertScaleAbs function
+        rgb_img = cv2.convertScaleAbs(rgb_img, alpha=alpha, beta=beta)
 
         writer.append(batch, rgb_img)
         imgs.append(rgb_img)
