@@ -67,15 +67,15 @@ class Dataset(torch.utils.data.Dataset):
         if cfg.task == 'AIST_mocap':
 
             if skip==60:
-                if sub_idx == 'd16':
+                if cfg.subject == 'd16':
                     f_idxs = [200,564,824,832,840]
-                if sub_idx == 'd17':
+                if cfg.subject == 'd17':
                     f_idxs = [200,564,1228,1240,1252]
-                if sub_idx == 'd18':
+                if cfg.subject == 'd18':
                     f_idxs = [200,500,708,736,780]
-                if sub_idx == 'd19':
+                if cfg.subject == 'd19':
                     f_idxs = [212,280,408,556,564]
-                if sub_idx == 'd20':
+                if cfg.subject == 'd20':
                     f_idxs = [200,240,644,700,712]
                 select_framelist = []
                 for f_idx in f_idxs:

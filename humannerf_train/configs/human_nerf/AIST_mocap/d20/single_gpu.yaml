@@ -1,6 +1,6 @@
 task: 'AIST_mocap'
 subject: 'd20'
-experiment: '300frame-ablation_skip30'
+experiment: '300frame-ablation_skip60'
 
 
 ##############################################3
