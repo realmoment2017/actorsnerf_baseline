@@ -239,6 +239,8 @@ def _eval_freeview(
         
         # call convertScaleAbs function
         rgb_img = cv2.convertScaleAbs(rgb_img, alpha=alpha, beta=beta)
+        if cfg.task=='AIST_mocap':
+            rgb_img = rgb_img[100:500, 240:640]
 
         writer.append(batch, rgb_img)
         imgs.append(rgb_img)

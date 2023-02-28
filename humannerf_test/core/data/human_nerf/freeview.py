@@ -57,13 +57,13 @@ class Dataset(torch.utils.data.Dataset):
 
     def __init__(self, dataset_list):
 
-        self.pose_transfer = False
-        self.target_person_dataset = 'zju_mocap'
-        self.target_person = '396'
-        self.target_frame_start = 0
-        self.target_frame_end = -1
-        self.target_skip = 50
-        self.render_cam_id = 4
+        self.pose_transfer = True
+        self.target_person_dataset = 'AIST_mocap'
+        self.target_person = 'd01'
+        self.target_frame_start = 100
+        self.target_frame_end = 150
+        self.target_skip = 1
+        self.render_cam_id = 0
         self.dataset_path = {}
         self.image_dir = {}
         self.canonical_joints = {}
@@ -800,7 +800,7 @@ class Dataset(torch.utils.data.Dataset):
             #     [-1.12095222e-01, -3.03552743e-01,  9.46197847e-01,  9.24659496e-01],
             #     [ 3.24591342e-01,  8.88781180e-01,  3.23586788e-01,  2.83248315e+00],
             #     [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])
-            angle = -(idx%30)*(1/30) * 360
+            angle = (idx%50)*(1/50) * 360
             E = self.get_freeview_camera(
                         target_camera=E.copy(),
                         angle=angle,
@@ -813,7 +813,7 @@ class Dataset(torch.utils.data.Dataset):
         # else:
         K = self.cameras[sub_idx][cam_idx][temp[0]]['intrinsics'][:3, :3].copy()
         E = self.cameras[sub_idx][cam_idx][temp[0]]['extrinsics']
-        # E = rotate_cam(E, idx)
+        E = rotate_cam(E, idx)
         K[:2] *= cfg.resize_img_scale
 
 
