@@ -64,6 +64,11 @@ class Dataset(torch.utils.data.Dataset):
                 self.framelist = self.framelist[::75][0:]
             else:
                 self.framelist = self.framelist[::skip][1:]
+
+            #maxframes = 100
+            #self.framelist = framelist[:maxframes]
+            #self.framelist = self.framelist[::skip][4:]
+
         if cfg.task == 'AIST_mocap':
 
             if skip==60:
@@ -98,6 +103,10 @@ class Dataset(torch.utils.data.Dataset):
                 if cfg.subject == 'd20':
                     render_framelist = ['frame_000204', 'frame_000700', 'frame_000712']
                 self.framelist = render_framelist + self.framelist
+
+            #maxframes = 100
+            #self.framelist = framelist[:maxframes]
+            #self.framelist = self.framelist[::skip]
 
         print(self.framelist)
 
