@@ -7,3 +7,5 @@ datasets
 experiments
 experiments/
 wandb/
+data/
+out/
