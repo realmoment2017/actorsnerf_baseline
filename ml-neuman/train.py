@@ -12,6 +12,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from data_io import neuman_helper
+from data_io import zju_helper
 from utils import utils
 from datasets import background_rays, human_rays
 from options.options import str2bool
@@ -77,16 +78,24 @@ def train_background(opt):
 
 
 def train_human(opt):
-    train_split, val_split, _ = neuman_helper.create_split_files(opt.scene_dir)
-    train_scene = neuman_helper.NeuManReader.read_scene(
-        opt.scene_dir,
-        tgt_size=opt.tgt_size,
-        normalize=opt.normalize,
-        bkg_range_scale=opt.bkg_range_scale,
-        human_range_scale=opt.human_range_scale,
-        mask_dir=opt.mask_dir,
-        smpl_type=opt.smpl_type
-    )
+    debug_dataset = 'zju_mocap'
+    if debug_dataset=='zju_mocap':
+        train_split, val_split, _ = zju_helper.create_split_files(opt.scene_dir)
+        train_scene = zju_helper.ZjuMocapReader.read_scene(
+            opt.scene_dir,
+            tgt_size=opt.tgt_size,
+        )
+    else:
+        train_split, val_split, _ = neuman_helper.create_split_files(opt.scene_dir)
+        train_scene = neuman_helper.NeuManReader.read_scene(
+            opt.scene_dir,
+            tgt_size=opt.tgt_size,
+            normalize=opt.normalize,
+            bkg_range_scale=opt.bkg_range_scale,
+            human_range_scale=opt.human_range_scale,
+            mask_dir=opt.mask_dir,
+            smpl_type=opt.smpl_type
+        )
     if opt.geo_threshold < 0:
         can_bones = []
         bones = []
@@ -96,13 +105,20 @@ def train_human(opt):
         opt.geo_threshold = np.mean(bones)
     poses = np.stack([item['pose'] for item in train_scene.smpls])
     betas = np.stack([item['betas'] for item in train_scene.smpls])
-    raw_alignments = np.load(os.path.join(opt.scene_dir, 'alignments.npy'), allow_pickle=True).item()
-    alignments = np.stack([raw_alignments[os.path.basename(cap.image_path)] for cap in train_scene.captures])
-    alignments2 = np.stack([np.eye(4)] * alignments.shape[0])
-    alignments2[..., :3] = alignments
+    if debug_dataset=='zju_mocap':
+        raw_alignments = train_scene.alignments
+        alignments2 = np.stack(raw_alignments)
+    else:
+        raw_alignments = np.load(os.path.join(opt.scene_dir, 'alignments.npy'), allow_pickle=True).item()
+        alignments = np.stack([raw_alignments[os.path.basename(cap.image_path)] for cap in train_scene.captures])
+        alignments2 = np.stack([np.eye(4)] * alignments.shape[0])
+        alignments2[..., :3] = alignments
     net = human_nerf.HumanNeRF(opt, poses.copy(), betas.copy(), alignments2.copy(), scale=train_scene.scale)
     device = next(net.parameters()).device
-    train_scene.read_data_to_ram(data_list=['image', 'depth'])
+    if debug_dataset=='zju_mocap':
+        train_scene.read_data_to_ram(data_list=['image'])
+    else:
+        train_scene.read_data_to_ram(data_list=['image', 'depth'])
     utils.add_border_mask(train_scene, iterations=opt.dilation)
     utils.add_pytorch3d_cache(train_scene, device)
     utils.move_smpls_to_torch(train_scene, device)

@@ -35,15 +35,13 @@ TABU_CAMS = [0, 1,  2,  3,  4,  5,  6,  7,  9, 10, 11, 12, 13, 14, 15, 16, 17, 1
 class ZjuCapture(captures_module.RigRGBPinholeCapture):
     def __init__(self, image_path, mask_path, pinhole_cam, cam_pose, view_id, cam_id):
         captures_module.RigRGBPinholeCapture.__init__(self, image_path, pinhole_cam, cam_pose, view_id, cam_id)
-        self.captured_image = contents.UndistortedCapturedImage(
+        # self.captured_image = contents.UndistortedCapturedImage(
+        self.captured_image = contents.CapturedImage(
             image_path,
-            pinhole_cam.intrinsic_matrix,
-            pinhole_cam.radial_dist
         )
-        self.captured_mask = contents.UndistortedCapturedImage(
+        # self.captured_mask = contents.UndistortedCapturedImage(
+        self.captured_mask = contents.CapturedImage(
             mask_path,
-            pinhole_cam.intrinsic_matrix,
-            pinhole_cam.radial_dist
         )
 
     def read_image_to_ram(self) -> int:
@@ -185,7 +183,10 @@ class ZjuMocapReader():
         assert scene.num_views == len(smpls) == len(world_verts) == len(Ts)
         scene.smpls, scene.verts, scene.Ts, scene.alignments = smpls, world_verts, Ts, alignments
         scene.static_vert = static_verts
-        _, uvs, faces = utils.read_obj('./sample_data/smplx/smpl_uv.obj')
+        # _, uvs, faces = utils.read_obj('./sample_data/smplx/smpl_uv.obj')
+        _, uvs, faces = utils.read_obj(
+            os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')), 'data/smplx/smpl_uv.obj')
+            )
         scene.uvs, scene.faces = uvs, faces
 
         # compute the near and far
@@ -263,10 +264,15 @@ class ZjuMocapReader():
     @classmethod
     def read_smpls(cls, scene_dir):
         device = torch.device('cpu')
-        body_model = SMPL('./sample_data/smplx/smpl',
-                               gender='neutral',
-                               device=device,
-                               )
+        # body_model = SMPL('./sample_data/smplx/smpl',
+        #                        gender='neutral',
+        #                        device=device,
+        #                        )
+        body_model = SMPL(
+            os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')), 'data/smplx/smpl'),
+            gender='neutral',
+            device=device
+        )
         smpls = []
         world_verts = []
         static_verts = []
@@ -322,6 +328,7 @@ class ZjuMocapReader():
             temp_world_verts = np.einsum('BNi, Bi->BN', T, ray_utils.to_homogeneous(np.concatenate([da_pose_verts, da_pose_joints], axis=0)))[:, :3].astype(np.float32)
             temp_world_verts, temp_world_joints = temp_world_verts[:6890, :], temp_world_verts[6890:, :]
             temp_smpl['joints_3d'] = temp_world_joints
+            temp_smpl['static_joints_3d'] = da_pose_joints
             smpls.append(temp_smpl)
             Ts.append(T)
             static_verts.append(da_pose_verts)

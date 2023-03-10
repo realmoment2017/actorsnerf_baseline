@@ -557,19 +557,19 @@ class HumanNeRFTrainer():
             self.optim.zero_grad()
         else:
             loss_dict['total_loss'].backward()
-            if self.opt.block_grad:
-                try:
-                    cap_id = int(batch['cap_id'].item())
-                    grad_mask = turn_smpl_gradient_off(
-                        self.train_dataset.scene.captures[cap_id].densepose
-                    )
-                    grad_mask = torch.from_numpy(grad_mask).float().to(
-                        next(self.net.parameters()).device
-                    )
-                    self.net.poses.grad[cap_id] *= grad_mask
-                except Exception as e:
-                    print('failed to block gradients w.r.t unseen joints')
-                    print(e)
+            # if self.opt.block_grad:
+            #     try:
+            #         cap_id = int(batch['cap_id'].item())
+            #         grad_mask = turn_smpl_gradient_off(
+            #             self.train_dataset.scene.captures[cap_id].densepose
+            #         )
+            #         grad_mask = torch.from_numpy(grad_mask).float().to(
+            #             next(self.net.parameters()).device
+            #         )
+            #         self.net.poses.grad[cap_id] *= grad_mask
+            #     except Exception as e:
+            #         print('failed to block gradients w.r.t unseen joints')
+            #         print(e)
             self.push_training_data(
                 losses,
                 self.optim.param_groups[0]['lr']
