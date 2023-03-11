@@ -364,7 +364,7 @@ class HumanNeRFTrainer():
         can_out = self.net.coarse_human_net(can_pts, can_dirs)
         # compensate the interval difference between observation space and canonical space
         can_out[..., -1] *= self.interval_comp
-        _, _, can_mask, can_weights, _ = render_utils.raw2outputs(can_out, can_z_vals.clone(), can_dirs[:, 0, :].clone(), white_bkg=True)
+        _, _, can_mask, can_weights, _ = render_utils.raw2outputs(can_out, can_z_vals.clone(), can_dirs[:, 0, :].clone(), white_bkg=self.opt.white_bkg)
         can_weights = torch.clip(can_weights, 0.0, 1.0)
         can_mask = torch.clip(can_mask, 0.0, 1.0)
         # sharp edge loss
@@ -492,7 +492,7 @@ class HumanNeRFTrainer():
             None,
             rays_per_batch=self.opt.rays_per_batch,
             samples_per_ray=self.opt.samples_per_ray,
-            white_bkg=True,
+            white_bkg=self.opt.white_bkg,
             render_can=True,
             return_mask=True,
             return_depth=True,

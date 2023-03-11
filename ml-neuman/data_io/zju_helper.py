@@ -37,12 +37,14 @@ class ZjuCapture(captures_module.RigRGBPinholeCapture):
     def __init__(self, image_path, mask_path, pinhole_cam, cam_pose, view_id, cam_id):
         captures_module.RigRGBPinholeCapture.__init__(self, image_path, pinhole_cam, cam_pose, view_id, cam_id)
         # self.captured_image = contents.UndistortedCapturedImage(
-        self.captured_image = contents.CapturedImage(
+        self.captured_image = contents.ResizedCapturedImage(
             image_path,
+            (512, 512),
         )
         # self.captured_mask = contents.UndistortedCapturedImage(
-        self.captured_mask = contents.CapturedImage(
+        self.captured_mask = contents.ResizedCapturedImage(
             mask_path,
+            (512, 512),
         )
 
     def read_image_to_ram(self) -> int:
@@ -151,7 +153,9 @@ def create_split_files(scene_dir):
     length = int(1 / (num_val) * scene_length)
     offset = length // 2
     val_list = list(range(scene_length))[offset::length]
-    train_list = list(set(range(scene_length)) - set(val_list))
+    # train_list = list(set(range(scene_length)) - set(val_list))
+    # MODIFY FOR ACTORSNERF BASELINE
+    train_list = list(set(range(scene_length)))
     test_list = val_list[:len(val_list) // 2]
     val_list = val_list[len(val_list) // 2:]
     assert len(train_list) > 0
@@ -222,16 +226,21 @@ class ZjuMocapReader():
         K = np.array(cams['K']).astype(np.float32)
         D = np.array(cams['D']).astype(np.float32)
         intrins = []
+        # MODIFY FOR ACTORSNERF BASELINE
+        K[:2] *= 0.5
+        # MODIFY FOR ACTORSNERF BASELINE
         for k, d in zip(K, D):
-            temp_cam = PinholeCamera.from_intrinsic(1024, 1024, k)
+            # temp_cam = PinholeCamera.from_intrinsic(1024, 1024, k)
+            temp_cam = PinholeCamera.from_intrinsic(512, 512, k)
             temp_cam.radial_dist = d
             intrins.append(temp_cam)
         caps = []
         img_paths = get_img_paths(scene_dir)
         mask_paths = get_mask_paths(scene_dir)
         # MODIFY FOR ACTORSNERF BASELINE
-        MAX_VIEWS = 101
+        MAX_VIEWS = 301
         EVERY_K = 10
+        # MODIFY FOR ACTORSNERF BASELINE
         num_views = min(MAX_VIEWS, img_paths.shape[0])
         num_cams = img_paths.shape[1]
         assert num_cams==1
@@ -282,11 +291,15 @@ class ZjuMocapReader():
         static_verts = []
         Ts = []
         alignments = []
+        # MODIFY FOR ACTORSNERF BASELINE
+        MAX_VIEWS = 301
+        EVERY_K = 10
+        # MODIFY FOR ACTORSNERF BASELINE
         data_root = os.path.join(scene_dir, 'new_params')
         smpl_paths = glob.glob(os.path.join(data_root, '*.npy'))
         smpl_paths = sorted(smpl_paths,key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))[:MAX_VIEWS]
         for i, path in enumerate(smpl_paths):
-            if i % EVERY_K != 0:
+            if i % EVERY_K != 0 or i == 0:
                 continue
             temp_smpl = (
                 np.load(path, allow_pickle=True).item()

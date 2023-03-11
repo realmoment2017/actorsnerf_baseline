@@ -78,7 +78,7 @@ def train_background(opt):
 
 
 def train_human(opt):
-    debug_dataset = 'zju_mocap'
+    debug_dataset = 'zju_mocap_'
     if debug_dataset=='zju_mocap':
         train_split, val_split, _ = zju_helper.create_split_files(opt.scene_dir)
         train_scene = zju_helper.ZjuMocapReader.read_scene(
@@ -235,7 +235,7 @@ if __name__ == '__main__':
     parser.add_argument('--human_range_scale', default=1.5, type=float, help='extend near/far range for human')
     parser.add_argument('--image_height', type=int, default=None, required=False)
     parser.add_argument('--image_width', type=int, default=None, required=False)
-    parser.add_argument('--white_bkg', type=str2bool, default=True, required=False)
+    parser.add_argument('--white_bkg', type=str2bool, default=False, required=False)
     parser.add_argument('--samples_per_ray', default=128, type=int, help='how many samples per ray')
     parser.add_argument('--importance_samples_per_ray', default=128, type=int, help='how many importance samples per ray')
     parser.add_argument('--delay_iters', default=0, type=int, help='delay RGB loss, train with alpha/depth first')
