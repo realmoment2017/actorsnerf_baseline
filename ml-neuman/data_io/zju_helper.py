@@ -30,7 +30,8 @@ We need to inverse the transformation, and apply the inverse to the ray.
 '''
 
 # TABU_CAMS = [3]
-TABU_CAMS = [0, 1,  2,  3,  4,  5,  6,  7,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+# TABU_CAMS = [0, 1,  2,  3,  4,  5,  6,  7,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+TABU_CAMS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
 class ZjuCapture(captures_module.RigRGBPinholeCapture):
     def __init__(self, image_path, mask_path, pinhole_cam, cam_pose, view_id, cam_id):
@@ -227,19 +228,22 @@ class ZjuMocapReader():
             intrins.append(temp_cam)
         caps = []
         img_paths = get_img_paths(scene_dir)
-        mask_maths = get_mask_paths(scene_dir)
+        mask_paths = get_mask_paths(scene_dir)
+        # MODIFY FOR ACTORSNERF BASELINE
+        MAX_VIEWS = 101
+        EVERY_K = 10
         num_views = min(MAX_VIEWS, img_paths.shape[0])
         num_cams = img_paths.shape[1]
         assert num_cams==1
         counter = 0
         for view_id in range(num_views):
-            if view_id % EVERY_K != 0:
+            if view_id % EVERY_K != 0 or view_id==0:
                 continue
             for cam_id in range(num_cams):
                 if tgt_size is None:
                     temp = ZjuCapture(
                         img_paths[view_id, cam_id],
-                        mask_maths[view_id, cam_id],
+                        mask_paths[view_id, cam_id],
                         intrins[cam_id],
                         cam_poses[cam_id],
                         counter, #view_id,
@@ -248,7 +252,7 @@ class ZjuMocapReader():
                 else:
                     temp = ResizedZjuCapture(
                         img_paths[view_id, cam_id],
-                        mask_maths[view_id, cam_id],
+                        mask_paths[view_id, cam_id],
                         intrins[cam_id],
                         cam_poses[cam_id],
                         tgt_size,

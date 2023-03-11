@@ -191,7 +191,7 @@ def render_smpl_nerf(net, cap, posed_verts, faces, Ts, rays_per_batch=32768, sam
         total_depth_map = []
         total_acc_map = []
         for i in range(0, total_rays, rays_per_batch):
-            print(f'{i} / {total_rays}')
+            # print(f'{i} / {total_rays}')
             rgb_map = torch.zeros_like(origins[i:i + rays_per_batch]).to(device)
             depth_map = torch.zeros_like(origins[i:i + rays_per_batch, 0]).to(device)
             acc_map = torch.zeros_like(origins[i:i + rays_per_batch, 0]).to(device)
