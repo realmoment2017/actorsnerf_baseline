@@ -209,34 +209,42 @@ class HumanNeRFTrainer():
         coarse_bkg_pts = coarse_bkg_samples[0].to(device)
         coarse_bkg_dirs = coarse_bkg_samples[1].to(device)
         coarse_bkg_z_vals = coarse_bkg_samples[2].to(device)
-        coarse_bkg_out = self.net.coarse_bkg_net(
-            coarse_bkg_pts,
-            coarse_bkg_dirs
-        )
-        coarse_bkg_out = coarse_bkg_out.detach()
+        # coarse_bkg_out = self.net.coarse_bkg_net(
+        #     coarse_bkg_pts,
+        #     coarse_bkg_dirs
+        # )
+        # coarse_bkg_out = coarse_bkg_out.detach()
 
-        _, _, _, coarse_bkg_weights, _ = render_utils.raw2outputs(
-            coarse_bkg_out,
-            coarse_bkg_z_vals,
-            coarse_bkg_dirs[:, 0, :],
-            white_bkg=self.opt.white_bkg
-        )
-        coarse_bkg_weights = coarse_bkg_weights.detach()
+        # _, _, _, coarse_bkg_weights, _ = render_utils.raw2outputs(
+        #     coarse_bkg_out,
+        #     coarse_bkg_z_vals,
+        #     coarse_bkg_dirs[:, 0, :],
+        #     white_bkg=self.opt.white_bkg
+        # )
+        # coarse_bkg_weights = coarse_bkg_weights.detach()
 
-        fine_bkg_pts, fine_bkg_dirs, fine_bkg_z_vals = ray_utils.ray_to_importance_samples(
-            batch,
-            coarse_bkg_z_vals,
-            coarse_bkg_weights,
-            self.opt.importance_samples_per_ray,
-            device=device
-        )
+        # fine_bkg_pts, fine_bkg_dirs, fine_bkg_z_vals = ray_utils.ray_to_importance_samples(
+        #     batch,
+        #     coarse_bkg_z_vals,
+        #     coarse_bkg_weights,
+        #     self.opt.importance_samples_per_ray,
+        #     device=device
+        # )
 
-        fine_bkg_out = self.net.fine_bkg_net(
-            fine_bkg_pts,
-            fine_bkg_dirs
-        )
-        fine_bkg_out = fine_bkg_out.detach()
-        return fine_bkg_pts, fine_bkg_dirs, fine_bkg_z_vals, torch.zeros(fine_bkg_out.shape).to(fine_bkg_out.device)
+        # fine_bkg_out = self.net.fine_bkg_net(
+        #     fine_bkg_pts,
+        #     fine_bkg_dirs
+        # )
+        # fine_bkg_out = fine_bkg_out.detach()
+        # return fine_bkg_pts, fine_bkg_dirs, fine_bkg_z_vals, torch.zeros(fine_bkg_out.shape).to(fine_bkg_out.device)
+
+        N, R, D = coarse_bkg_pts.shape
+        fine_bkg_pts = coarse_bkg_pts
+        fine_bkg_dirs  = coarse_bkg_dirs
+        fine_bkg_z_vals = coarse_bkg_z_vals
+        fine_bkg_out = torch.zeros(N, R, 4).to(fine_bkg_pts.device)
+        return fine_bkg_pts, fine_bkg_dirs, fine_bkg_z_vals, fine_bkg_out
+
 
     def _eval_human_samples(self, batch, device):
         human_batch = {
