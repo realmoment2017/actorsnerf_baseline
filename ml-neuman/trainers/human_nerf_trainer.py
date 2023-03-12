@@ -236,7 +236,7 @@ class HumanNeRFTrainer():
             fine_bkg_dirs
         )
         fine_bkg_out = fine_bkg_out.detach()
-        return fine_bkg_pts, fine_bkg_dirs, fine_bkg_z_vals, fine_bkg_out
+        return fine_bkg_pts, fine_bkg_dirs, fine_bkg_z_vals, torch.zeros(fine_bkg_out.shape).to(fine_bkg_out.device)
 
     def _eval_human_samples(self, batch, device):
         human_batch = {
