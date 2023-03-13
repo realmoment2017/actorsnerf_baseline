@@ -16,13 +16,16 @@ import skimage
 from skimage.metrics import structural_similarity as ssim
 import lpips
 
-loss_fn_alex = lpips.LPIPS(net='alex')
+loss_fn_alex = lpips.LPIPS(net='vgg')
 
 from models import human_nerf
 from utils import render_utils, utils
 from data_io import neuman_helper, zju_helper_eval
 from options import options
 
+import re
+import time
+from utils.evaluator import Evaluator
 
 def eval_metrics(gts, preds):
     results = {
@@ -50,11 +53,12 @@ def main(opt):
     # _, _, test_split = neuman_helper.create_split_files(opt.scene_dir)
     # test_views = neuman_helper.read_text(test_split)
     test_views = list(range(301, 550))
-    test_views = test_views[::300]
+    test_views = test_views[::30]
 
     preds = []
     gts = []
 
+    evaluator = Evaluator()
     for exclude_TABU_CAMS in range(22): 
         TABU_CAMS = list(range(23))
         TABU_CAMS.pop(exclude_TABU_CAMS+1)
@@ -68,9 +72,9 @@ def main(opt):
             for i in range(len(scene.captures)):
                 bones.append(np.linalg.norm(scene.smpls[i]['joints_3d'][3] - scene.smpls[i]['joints_3d'][0]))
             opt.geo_threshold = np.mean(bones)
-        net = human_nerf.HumanNeRF(opt)
-        weights = torch.load(opt.weights_path, map_location='cpu')
-        utils.safe_load_weights(net, weights['hybrid_model_state_dict'])
+            net = human_nerf.HumanNeRF(opt)
+            weights = torch.load(opt.weights_path, map_location='cpu')
+            utils.safe_load_weights(net, weights['hybrid_model_state_dict'])
 
         for view_name in test_views:
             cap = scene[view_name]
@@ -82,20 +86,25 @@ def main(opt):
                 scene.verts[i],
                 scene.faces,
                 scene.Ts[i],
-                rays_per_batch=opt.rays_per_batch,
+                # rays_per_batch=opt.rays_per_batch,
                 samples_per_ray=opt.samples_per_ray,
                 white_bkg=False,
                 geo_threshold=opt.geo_threshold,
                 return_depth=False
             )
-            save_path = os.path.join('./demo', f'test_views/{os.path.basename(opt.scene_dir)}', f'{str(exclude_TABU_CAMS+1)}_frame_{str(i).zfill(6)}.png')
+            file_path = re.split('/', opt.weights_path)[-2]
+            save_path = os.path.join('./demo', f'test_views/{file_path}', f'{str(exclude_TABU_CAMS+1)}_frame_{str(i).zfill(6)}.png')
             if not os.path.isdir(os.path.dirname(save_path)):
                 os.makedirs(os.path.dirname(save_path))
             imageio.imsave(save_path, out)
             print(f'image saved: {save_path}')
-            preds.append(imageio.imread(save_path))
-            gts.append(cap.image)
-    print(eval_metrics(gts, preds))
+            # preds.append(imageio.imread(save_path))
+            # gts.append(cap.image)
+            gt_image = cap.image.copy() / 255.0
+            gt_image[cap.mask<1] = 0
+            evaluator.evaluate(out, gt_image)
+            evaluator.summarize()
+    evaluator.summarize()
 
 
 if __name__ == "__main__":
