@@ -90,6 +90,7 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, max_iter=-1):
     batch_sampler = make_batch_data_sampler(cfg, sampler, batch_size,
                                             drop_last, max_iter, is_train)
     num_workers = cfg.train.num_workers
+    num_workers = 1
     collator = make_collator(cfg, is_train)
     data_loader = torch.utils.data.DataLoader(dataset,
                                               batch_sampler=batch_sampler,

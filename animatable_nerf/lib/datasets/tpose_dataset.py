@@ -43,12 +43,13 @@ class Dataset(data.Dataset):
         self.ims = np.array([
             np.array(ims_data['ims'])[view]
             for ims_data in annots['ims'][i:i + ni * i_intv][::i_intv]
-        ]).ravel()
+        ]).ravel()[1:]
         self.cam_inds = np.array([
             np.arange(len(ims_data['ims']))[view]
             for ims_data in annots['ims'][i:i + ni * i_intv][::i_intv]
-        ]).ravel()
+        ]).ravel()[1:]
         self.num_cams = len(view)
+        print(self.ims)
 
         self.lbs_root = os.path.join(self.data_root, 'lbs')
         joints = np.load(os.path.join(self.lbs_root, 'joints.npy'))
