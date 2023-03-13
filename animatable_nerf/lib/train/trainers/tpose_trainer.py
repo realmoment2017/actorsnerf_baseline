@@ -5,7 +5,7 @@ from lib.networks.renderer import make_renderer
 from lib.networks.renderer import tpose_renderer
 from lib.train import make_optimizer
 from lib.utils.if_nerf import if_nerf_net_utils
-from . import crit
+#from . import crit
 
 
 class NetworkWrapper(nn.Module):

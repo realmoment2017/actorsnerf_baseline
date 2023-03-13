@@ -3,7 +3,7 @@ from lib.config import cfg
 import torch
 from lib.networks.renderer import tpose_renderer
 from lib.train import make_optimizer
-from . import crit
+#from . import crit
 from lib.utils.if_nerf import if_nerf_net_utils
 from lib.utils.blend_utils import *
 

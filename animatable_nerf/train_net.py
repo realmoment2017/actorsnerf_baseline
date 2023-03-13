@@ -3,7 +3,7 @@ from lib.networks import make_network
 from lib.train import make_trainer, make_optimizer, make_lr_scheduler, make_recorder, set_lr_scheduler
 from lib.datasets import make_data_loader
 from lib.utils.net_utils import load_model, save_model, load_network
-from lib.evaluators import make_evaluator
+#from lib.evaluators import make_evaluator
 import torch.multiprocessing
 import torch
 import torch.distributed as dist
@@ -20,7 +20,7 @@ def train(cfg, network):
     optimizer = make_optimizer(cfg, network)
     scheduler = make_lr_scheduler(cfg, optimizer)
     recorder = make_recorder(cfg)
-    evaluator = make_evaluator(cfg)
+    #evaluator = make_evaluator(cfg)
 
     begin_epoch = load_model(network,
                              optimizer,
@@ -34,7 +34,7 @@ def train(cfg, network):
                                     is_train=True,
                                     is_distributed=cfg.distributed,
                                     max_iter=cfg.ep_iter)
-    val_loader = make_data_loader(cfg, is_train=False)
+    #val_loader = make_data_loader(cfg, is_train=False)
 
     for epoch in range(begin_epoch, cfg.train.epoch):
         recorder.epoch = epoch
@@ -57,8 +57,8 @@ def train(cfg, network):
                        epoch,
                        last=True)
 
-        if (epoch + 1) % cfg.eval_ep == 0:
-            trainer.val(epoch, val_loader, evaluator, recorder)
+        #if (epoch + 1) % cfg.eval_ep == 0:
+        #    trainer.val(epoch, val_loader, evaluator, recorder)
 
     return network
 
