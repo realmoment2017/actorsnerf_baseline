@@ -19,6 +19,7 @@ import cv2
 EXCLUDE_KEYS_TO_GPU = ['frame_name', 'sub_idx', 'cam_idx'
                        'img_width', 'img_height', 'ray_mask']
 
+MAKE_VIDEO = False
 
 def load_network():
     model = create_network()
@@ -200,11 +201,11 @@ def _eval_freeview(
 
     writer = ImageWriter_Category(
                 output_dir=os.path.join(cfg.logdir, cfg.load_net),
-                exp_name=folder_name)
+                exp_name=folder_name, MAKE_VIDEO=MAKE_VIDEO)
 
     model.eval()
     imgs = []
-    for batch in tqdm(test_loader):
+    for idx, batch in tqdm(enumerate(test_loader)):
         #batch = batch[0]
         for k, v in batch.items():
             if k=="data_enc" or k=='txyz_dic' or k=='pxyz_dic' or k=='dst_bbox':
@@ -239,10 +240,13 @@ def _eval_freeview(
         
         # call convertScaleAbs function
         rgb_img = cv2.convertScaleAbs(rgb_img, alpha=alpha, beta=beta)
-        if cfg.task=='AIST_mocap':
-            rgb_img = rgb_img[100:500, 240:640]
+        #if cfg.task=='AIST_mocap':
+        #    rgb_img = rgb_img[100:500, 240:640]
 
-        writer.append(batch, rgb_img)
+        if MAKE_VIDEO:
+            writer.append(batch, rgb_img, MAKE_VIDEO, idx)
+        else:
+            writer.append(batch, rgb_img)
         imgs.append(rgb_img)
         img_out = np.stack(imgs, axis=0)
 

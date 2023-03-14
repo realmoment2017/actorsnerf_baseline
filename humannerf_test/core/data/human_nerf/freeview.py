@@ -23,6 +23,8 @@ from core.utils.camera_util import \
 
 from configs import cfg
 
+MAKE_VIDEO = False
+
 def rotate_camera_by_angle(
         extrinsics, 
         angle, 
@@ -59,9 +61,13 @@ class Dataset(torch.utils.data.Dataset):
 
         self.pose_transfer = True
         self.target_person_dataset = 'AIST_mocap'
-        self.target_person = 'd01'
-        self.target_frame_start = 100
+        self.target_person = 'd08'
+        self.target_frame_start = 0
         self.target_frame_end = 150
+        self.target_frame = 420
+        if MAKE_VIDEO:
+            self.target_frame_start = (self.target_frame - 200)//4 - 1
+            self.target_frame_end = self.target_frame_start + 50
         self.target_skip = 1
         self.render_cam_id = 0
         self.dataset_path = {}
@@ -741,6 +747,8 @@ class Dataset(torch.utils.data.Dataset):
             target_sub_idx = self.target_person
             target_cam_idx = self.target_idx_hist[idx]['cam_idx']
             target_frame_idx = self.target_idx_hist[idx]['frame_idx']
+            if MAKE_VIDEO:
+                target_frame_idx = 'frame_{:06d}'.format(self.target_frame)
             frame_idx = target_frame_idx
             results = {
                 'sub_idx': sub_idx,
@@ -813,7 +821,18 @@ class Dataset(torch.utils.data.Dataset):
         # else:
         K = self.cameras[sub_idx][cam_idx][temp[0]]['intrinsics'][:3, :3].copy()
         E = self.cameras[sub_idx][cam_idx][temp[0]]['extrinsics']
-        E = rotate_cam(E, idx)
+        if MAKE_VIDEO:
+            if idx<=20:
+                video_idx = -idx 
+            elif idx>20 and idx<=60:
+                video_idx = -(40-idx)
+            #elif idx>45:
+            #    video_idx = idx-60
+            E = rotate_cam(E, video_idx)
+        if (not MAKE_VIDEO) and int(frame_idx[-6:])>self.target_frame:
+            video_idx = -(40-50)
+            E = rotate_cam(E, video_idx)
+        # E = rotate_cam(E, idx)
         K[:2] *= cfg.resize_img_scale
 
 

@@ -75,24 +75,28 @@ class ImageWriter():
         pass
 
 class ImageWriter_Category():
-    def __init__(self, output_dir, exp_name):
+    def __init__(self, output_dir, exp_name, MAKE_VIDEO=False):
         self.image_dir = os.path.join(output_dir, exp_name)
         #self.image_dir = os.path.join(output_dir, '387_4_d07')
 
         print("The rendering is saved in " + \
               colored(self.image_dir, 'cyan'))
         
-        # remove image dir if it exists
-        if os.path.exists(self.image_dir):
-            shutil.rmtree(self.image_dir)
+        if not MAKE_VIDEO:
+            # remove image dir if it exists
+            if os.path.exists(self.image_dir):
+                shutil.rmtree(self.image_dir)
         
         os.makedirs(self.image_dir, exist_ok=True)
 
-    def append(self, batch, image, img_name=None):
+    def append(self, batch, image, MAKE_VIDEO=False, idx=None, img_name=None):
         sub_idx = batch['sub_idx']
         cam_idx = batch['cam_idx']
         frame_idx = batch['frame_name']
-        save_image(image, f'{self.image_dir}/{sub_idx}_{cam_idx}_{frame_idx}.png')
+        if MAKE_VIDEO:
+            save_image(image, f'{self.image_dir}/{sub_idx}_{cam_idx}_frame_000420_{idx}.png')
+        else:
+            save_image(image, f'{self.image_dir}/{sub_idx}_{cam_idx}_{frame_idx}.png')
 
     def finalize(self):
         pass
