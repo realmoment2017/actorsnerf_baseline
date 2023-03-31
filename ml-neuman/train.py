@@ -20,6 +20,11 @@ from options import options
 from models import vanilla, human_nerf
 from trainers import vanilla_nerf_trainer, human_nerf_trainer
 
+os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
+os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
 
 def train_background(opt):
     assert opt.bkg_rays_ratio == 1
@@ -78,7 +83,7 @@ def train_background(opt):
 
 
 def train_human(opt):
-    debug_dataset = 'zju_mocap_'
+    debug_dataset = 'zju_mocap'
     if debug_dataset=='zju_mocap':
         train_split, val_split, _ = zju_helper.create_split_files(opt.scene_dir)
         train_scene = zju_helper.ZjuMocapReader.read_scene(
