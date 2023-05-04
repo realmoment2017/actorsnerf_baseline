@@ -4,6 +4,7 @@ from lib.run_nerf_helpers import *
 from parser_config import *
 from lib.h36m_dataset import H36MDataset, H36MDatasetBatch, H36MDatasetBatchAll, H36MDatasetPair
 from lib.THuman_dataset import THumanDataset, THumanDatasetBatch, THumanDatasetPair, THumanDatasetBatchRandom
+from lib.neuralbody_dataset import NeuBodyDatasetBatch, NeuBodyDatasetBatch_Source
 
 def return_model(global_args):
     if global_args.model == 'correction_by_f3d':
@@ -221,10 +222,25 @@ def return_dataset(global_args, pairs=None):
             image_scaling=global_args.image_scaling,
             start=global_args.start, 
             interval=global_args.interval, 
-            poses_num=global_args.poses_num
+            poses_num=global_args.poses_num,
+            finetune_subject=global_args.finetune_subject
+        )
+        training_set_source = NeuBodyDatasetBatch_Source(
+            global_args.data_root, 
+            split=global_args.train_split, 
+            view_num=global_args.view_num, 
+            border=global_args.border, 
+            N_rand=global_args.N_rand,
+            multi_person=global_args.multi_person,
+            num_instance=global_args.num_instance,
+            image_scaling=global_args.image_scaling,
+            start=global_args.start, 
+            interval=global_args.interval, 
+            poses_num=global_args.poses_num,
+            finetune_subject=global_args.finetune_subject
         )
     
     
     else:
         pass
-    return training_set
+    return training_set, training_set_source

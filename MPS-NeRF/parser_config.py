@@ -102,6 +102,9 @@ def config_parser():
 
     parser.add_argument("--smpl_shape_loss", type=int, default=1)
 
+    parser.add_argument("--finetune_subject", type=str, default='None', 
+                        help='Finetune def')
+ 
 
     return parser
 

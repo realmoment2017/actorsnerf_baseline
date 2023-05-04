@@ -150,14 +150,20 @@ def SMPL_to_tensor(params):
     return params
 
 def sequeeze_0(sp_input, tp_input=None):
+    sp_input['pose_index'] = torch.tensor(sp_input['pose_index']).view(-1)
+    sp_input['gender'] = torch.tensor(sp_input['gender']).view(-1)
     for key in sp_input.keys():
-        if torch.is_tensor(sp_input[key]):
-            # sp_input[key] = sp_input[key].repeat(repeat_num)
-            sp_input[key] = torch.squeeze(sp_input[key], 0).float()
+        # if torch.is_tensor(sp_input[key]):
+        #     sp_input[key] = sp_input[key].repeat(repeat_num)
+        #     sp_input[key] = torch.squeeze(sp_input[key], 0).float()
+        if key != 'params':
+            sp_input[key] = torch.tensor(sp_input[key]).float()
+
         if key=='params':
             for key1 in sp_input['params']:
-                if torch.is_tensor(sp_input['params'][key1]):
-                    sp_input['params'][key1] = torch.squeeze(sp_input['params'][key1], 0).float()    
+                # if torch.is_tensor(sp_input['params'][key1]):
+                #     sp_input['params'][key1] = torch.squeeze(sp_input['params'][key1], 0).float()    
+                sp_input['params'][key1] = torch.tensor(sp_input['params'][key1]).float()    
     if tp_input==None:
         return sp_input
     

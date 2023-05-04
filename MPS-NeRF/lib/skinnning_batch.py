@@ -299,6 +299,55 @@ class SKinningBatch(nn.Module):
         
         return smpl_src_pts, world_src_pts, bweights
 
+    def coarse_deform_c2source_update(self, params, t_vertices, query_pts, weights_correction):
+        # Find nearest smpl vertex
+        smpl_pts = t_vertices
+        _, vert_ids, _ = knn_points(query_pts.unsqueeze(0).float(), smpl_pts.unsqueeze(0).float(), K=1)
+        bweights = self.SMPL_NEUTRAL['weights'][vert_ids.squeeze(0)].view(-1,24).cuda()
+
+        # add weights_correction, normalize weights
+        # bweights = F.softmax(bweights + 0.2*weights_correction, dim=1)
+        bweights = bweights + 0.2 * weights_correction
+        bweights = bweights / torch.sum(bweights, dim=-1, keepdim=True)
+
+        ### From Big To T Pose
+        big_pose_params = self.big_pose_params(params)
+        A, R, Th, joints = get_transform_params_torch(self.SMPL_NEUTRAL, big_pose_params)
+        A = torch.mm(bweights, A.reshape(24, -1))
+        A = torch.reshape(A, (-1, 4, 4))
+        query_pts = query_pts - A[:, :3, 3]
+        R_inv = torch.inverse(A[:, :3, :3].float())
+        query_pts = torch.sum(R_inv * query_pts[:, None], dim=2)
+
+        if self.mean_shape:
+            # From mean shape to normal shape
+            shapedirs = self.SMPL_NEUTRAL['shapedirs'].cuda()
+            shape_offset = (shapedirs * torch.reshape(params['shapes'].cuda(), (10,))).sum(dim=-1)
+            query_pts = query_pts + shape_offset[vert_ids.squeeze(0).reshape(-1)]
+
+            posedirs = self.SMPL_NEUTRAL['posedirs'].cuda().float()
+            pose_ = params['poses']
+            ident = torch.eye(3).cuda().float()
+            batch_size = 1
+            rot_mats = batch_rodrigues(pose_.view(-1, 3)).view([batch_size, -1, 3, 3])
+            pose_feature = (rot_mats[:, 1:, :, :] - ident).view([batch_size, -1]).cuda()
+            pose_offsets = torch.matmul(pose_feature, posedirs.view(6890*3, -1).transpose(1,0)).view(-1, 3)
+            query_pts = query_pts + pose_offsets[vert_ids.squeeze(0).reshape(-1)]
+
+        # get tar_pts, smpl space source pose
+        A, R, Th, joints = get_transform_params_torch(self.SMPL_NEUTRAL, params)
+        self.s_A = A
+        A = torch.mm(bweights, self.s_A.reshape(24, -1))
+        A = torch.reshape(A, (-1, 4, 4))
+        can_pts = torch.sum(A[:, :3, :3] * query_pts[:, None], dim=2)
+        smpl_src_pts = can_pts + A[:, :3, 3]
+        
+        # transform points from the smpl space to the world space
+        R_inv = torch.inverse(R)
+        world_src_pts = torch.mm(smpl_src_pts, R_inv) + Th
+        
+        return smpl_src_pts, world_src_pts, bweights
+
     def forward_fusion(self, query_pts, params, point_3d_feature, agg_feature=None):
         """(x, x-joint_t, target_f_3d) → deformation Net 1 → X_c"""
         query_pts_code = self.pos_enc(query_pts)
@@ -332,12 +381,13 @@ class SKinningBatch(nn.Module):
 
     def forward(self, sp_input, tp_input, world_query_pts, viewdir):
 
-        if sp_input["gender"][0] == 1:
-            self.SMPL_NEUTRAL = self.SMPL_MALE
-        elif sp_input["gender"][0] == 0:
-            self.SMPL_NEUTRAL = self.SMPL_FEMALE
-        else:
-            self.SMPL_NEUTRAL = self.SMPL_NEU
+        # if sp_input["gender"][0] == 1:
+        #     self.SMPL_NEUTRAL = self.SMPL_MALE
+        # elif sp_input["gender"][0] == 0:
+        #     self.SMPL_NEUTRAL = self.SMPL_FEMALE
+        # else:
+        #     self.SMPL_NEUTRAL = self.SMPL_NEU
+        self.SMPL_NEUTRAL = self.SMPL_NEU
         ## translate query points from world space target pose to smpl space target pose
         world_query_pts = world_query_pts.squeeze(0)
         viewdir = viewdir.squeeze(0)
@@ -370,18 +420,18 @@ class SKinningBatch(nn.Module):
         ## coarse deform target to caonical
         coarse_canonical_pts = self.coarse_deform_target2c(tp_input['params'], tp_input['vertices'], smpl_query_pts)        
         
-        ## Calculate correction
-        if self.correction_field or self.skinning_field:
-            sparse_smpl_vertices = self.prepare_spconv(tp_input, t_vertices=False)
-            normalized_source_pts = self.normalize_pts(smpl_query_pts, tp_input['bounds'])
-            point_3d_feature_0 = self.encoder_3d(sparse_smpl_vertices, normalized_source_pts.detach())
-            if self.data_set_type in ["H36M_P", "THuman_P"]:
-                _, coarse_world_src_pts, _ = self.coarse_deform_c2source(sp_input['params'], sp_input['t_vertices'], query_pts=coarse_canonical_pts, weights_correction=0.)
-                uv = self.projection(coarse_world_src_pts, sp_input['R_all'], sp_input['T_all'], sp_input['K_all'])
-            else:
-                uv = self.projection(world_query_pts[pts_mask==1].detach(), sp_input['R_all'], sp_input['T_all'], sp_input['K_all'])
-            agg_feature = torch.mean(self.encoder_2d.index(uv, self.image_shape), dim=0).transpose(0,1)        
-            fused_feature = self.forward_fusion(smpl_query_pts, tp_input['params'], point_3d_feature_0, agg_feature)
+        # ## Calculate correction
+        # if self.correction_field or self.skinning_field:
+        #     sparse_smpl_vertices = self.prepare_spconv(tp_input, t_vertices=False)
+        #     normalized_source_pts = self.normalize_pts(smpl_query_pts, tp_input['bounds'])
+        #     point_3d_feature_0 = self.encoder_3d(sparse_smpl_vertices, normalized_source_pts.detach())
+        #     if self.data_set_type in ["H36M_P", "THuman_P"]:
+        #         _, coarse_world_src_pts, _ = self.coarse_deform_c2source(sp_input['params'], sp_input['t_vertices'], query_pts=coarse_canonical_pts, weights_correction=0.)
+        #         uv = self.projection(coarse_world_src_pts, sp_input['R_all'], sp_input['T_all'], sp_input['K_all'])
+        #     else:
+        #         uv = self.projection(world_query_pts[pts_mask==1].detach(), sp_input['R_all'], sp_input['T_all'], sp_input['K_all'])
+        #     agg_feature = torch.mean(self.encoder_2d.index(uv, self.image_shape), dim=0).transpose(0,1)        
+        #     fused_feature = self.forward_fusion(smpl_query_pts, tp_input['params'], point_3d_feature_0, agg_feature)
         
         ## More Accurate canonical_pts
         if self.correction_field:
@@ -403,21 +453,41 @@ class SKinningBatch(nn.Module):
             weights_correction = self.backward_deform(fused_feature.float())
         else:
             weights_correction = 0.
-        smpl_src_pts, world_src_pts, bweights = self.coarse_deform_c2source(sp_input['params'], sp_input['t_vertices'], canonical_pts, weights_correction)
+
+        smpl_src_pts_all = []
+        world_src_pts_all = []
+        bweights_all = []
+        for j in range(3):
+            params = {}
+            for k in sp_input['params'].keys():
+                params[k] = sp_input['params'][k][j]
+            smpl_src_pts, world_src_pts, bweights = self.coarse_deform_c2source_update(params, tp_input['t_vertices'], canonical_pts, weights_correction)
+            smpl_src_pts_all.append(smpl_src_pts)
+            world_src_pts_all.append(world_src_pts)
+            bweights_all.append(bweights)
         
         if self.smooth_loss and self.training:
-            _, vert_ids, _ = knn_points(canonical_pts.unsqueeze(0).float(), sp_input['t_vertices'].unsqueeze(0).float(), K=1)
+            _, vert_ids, _ = knn_points(canonical_pts.unsqueeze(0).float(), tp_input['t_vertices'].unsqueeze(0).float(), K=1)
             if self.smpl_pts_normal==None:
-                self.smpl_pts_normal = compute_normal(sp_input['t_vertices'], self.faces)
+                self.smpl_pts_normal = compute_normal(tp_input['t_vertices'], self.faces)
             nearest_smpl_normal = self.smpl_pts_normal[vert_ids.squeeze(0)].reshape(-1, 3)
 
         ## Get canonical 3d geometry aligned feature
         # sparse_smpl_vertices = self.prepare_spconv(tp_input, t_vertices=True)
         # normalized_source_pts = self.normalize_pts(canonical_pts, sp_input['t_bounds'])
         # point_3d_feature = self.encoder_3d(sparse_smpl_vertices, normalized_source_pts)
-        
-        ## Get mean pixel-aligned feature four view
-        uv = self.projection(world_src_pts, sp_input['R_all'], sp_input['T_all'], sp_input['K_all'])
+
+        # Get mean pixel-aligned feature four view
+        uv_all = []
+        for j in range(3):
+            world_src_pts = world_src_pts_all[j]
+            R_all = sp_input['R_all'][j].unsqueeze(0)
+            T_all = sp_input['T_all'][j].unsqueeze(0)
+            K_all = sp_input['K_all'][j].unsqueeze(0)
+            uv = self.projection(world_src_pts_all[j], R_all, T_all, K_all)
+            uv_all.append(uv)
+        uv = torch.cat(uv_all, dim=0)
+        # uv = self.projection(world_src_pts, sp_input['R_all'], sp_input['T_all'], sp_input['K_all'])
         # if self.correction_field or tp_input['pose_index']!=sp_input['pose_index']:
         #     uv = self.projection(world_src_pts, sp_input['R_all'], sp_input['T_all'], sp_input['K_all'])
         # else:

@@ -20,6 +20,14 @@ import torch.distributions as tdist
 from model_selection import *
 from lib.all_test import test_H36M, test_THuman_ssim
 
+import random
+
+os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
+os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
+
 parser = config_parser()
 global_args = parser.parse_args()
 
@@ -168,12 +176,44 @@ def test(chunk, render_kwargs, savedir=None, test_more=False):
         data_interval = 60
         poses_num = 5
         # human_name = "human_377"
-        human_name = os.path.basename(global_args.data_root)
-        savedir = os.path.join(savedir, human_name)
+        # human_names = ['CoreView_313', 'CoreView_315', 'CoreView_377', 'CoreView_386', 'CoreView_387', 'CoreView_390', 'CoreView_392', 'CoreView_393', 'CoreView_394', 'CoreView_396']
+        # human_name = random.choice(human_names)
+        # human_name = os.path.basename(global_args.data_root)
+        # savedir = os.path.join(savedir, human_name)
         os.makedirs(savedir, exist_ok=True)
         # print(global_args.view_num)
-        test_set = NeuBodyDatasetBatch(global_args.data_root, split=global_args.test_split, view_num=global_args.view_num,\
-            start=start_pose, interval=data_interval, poses_num=poses_num, image_scaling=global_args.image_scaling) 
+        # test_set = NeuBodyDatasetBatch(global_args.data_root, split=global_args.test_split, view_num=global_args.view_num,\
+        #     start=start_pose, interval=data_interval, poses_num=poses_num, image_scaling=global_args.image_scaling) 
+
+        test_set = NeuBodyDatasetBatch(
+            global_args.data_root, 
+            split=global_args.test_split, 
+            view_num=global_args.view_num, 
+            # border=global_args.border, 
+            # N_rand=global_args.N_rand,
+            multi_person=global_args.multi_person,
+            # num_instance=global_args.num_instance,
+            image_scaling=global_args.image_scaling,
+            start=global_args.start, 
+            interval=global_args.interval, 
+            poses_num=global_args.poses_num,
+            finetune_subject=global_args.finetune_subject
+        )
+        test_set_source = NeuBodyDatasetBatch_Source(
+            global_args.data_root, 
+            split=global_args.train_split, 
+            view_num=global_args.view_num, 
+            # border=global_args.border, 
+            # N_rand=global_args.N_rand,
+            multi_person=global_args.multi_person,
+            # num_instance=global_args.num_instance,
+            image_scaling=global_args.image_scaling,
+            start=global_args.start, 
+            interval=global_args.interval, 
+            poses_num=global_args.poses_num,
+            finetune_subject=global_args.finetune_subject
+        )
+
         H,W = int(1024 * ratio), int(1024 * ratio)
         interval = 4
     
@@ -195,11 +235,13 @@ def test(chunk, render_kwargs, savedir=None, test_more=False):
     
     sp_input=None
     for i, data in enumerate(test_loader):
-        data = to_cuda(device, data)
-        if i==0:
-            sp_input = data
+        # data = to_cuda(device, data)
+        # if i==0:
+        #     sp_input = data
         # sp_input = data
         tp_input = data
+        sp_input = test_set_source[data['instance_idx']]
+        sp_input, tp_input = to_cuda(device, sp_input, tp_input)
 
         if test_more and i==0 and global_args.data_set_type in ["THuman_B", "THuman_B_R", "THuman", "THuman_P"]: #, "NeuBody_B"]:
             interval = 1
@@ -219,13 +261,13 @@ def test(chunk, render_kwargs, savedir=None, test_more=False):
             msk = tp_input['msk_all'][:,k]
             mask_at_box = tp_input['mask_at_box_all'][:,k]
 
-            if global_args.data_set_type in ["H36M_B", "H36M_P", "H36M_B_All"]:
-                batch_rays = batch_rays.reshape(batch_size,2,H,W,3)[:, :, 150:662, 250:762, :].reshape(batch_size, 2, -1, 3)
-                near = near.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,-1,1)
-                far = far.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,-1,1)
-                target_s = target_s.reshape(batch_size,H,W,3)[:, 150:662, 250:762, :].reshape(batch_size,512,512,3)
-                msk = msk.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,512,512)
-                mask_at_box = mask_at_box.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,512,512) 
+            # if global_args.data_set_type in ["H36M_B", "H36M_P", "H36M_B_All"]:
+            #     batch_rays = batch_rays.reshape(batch_size,2,H,W,3)[:, :, 150:662, 250:762, :].reshape(batch_size, 2, -1, 3)
+            #     near = near.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,-1,1)
+            #     far = far.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,-1,1)
+            #     target_s = target_s.reshape(batch_size,H,W,3)[:, 150:662, 250:762, :].reshape(batch_size,512,512,3)
+            #     msk = msk.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,512,512)
+            #     mask_at_box = mask_at_box.reshape(batch_size,H,W,1)[:, 150:662, 250:762, :].reshape(batch_size,512,512) 
 
             rgb, disp, acc, extras = render(chunk=chunk, rays=batch_rays, sp_input=sp_input, tp_input=tp_input,
                                             near=near, far=far, **render_kwargs)
@@ -245,7 +287,7 @@ def test(chunk, render_kwargs, savedir=None, test_more=False):
                 rgb8 = to8b(img_pred.cpu().numpy())
                 gt_rgb8 = to8b(gt_img.cpu().numpy())
                 rgb8 = np.concatenate([rgb8, gt_rgb8], axis=1)
-                filename = os.path.join(savedir, '{:02d}_{:02d}_{:02d}.png'.format(int(sp_input['pose_index'][j]), int(tp_input['pose_index'][j]), k))
+                filename = os.path.join(savedir, '{:02d}_{:02d}_{:02d}.png'.format(int(tp_input['instance_idx']), k, int(tp_input['pose_index'][j])))
                 imageio.imwrite(filename, rgb8)
             
                 if k < 24:
@@ -254,7 +296,7 @@ def test(chunk, render_kwargs, savedir=None, test_more=False):
                     # mask_at_box should be boolean type, not int (如果是1而不是False,会被当做坐标。此时用==1)
                     test_loss = img2mse(img_pred[mask_at_box[j]], gt_img[mask_at_box[j]])
                     psnr = round(mse2psnr(test_loss).item(), 3)
-                    print("[Test] ", "Source:", int(sp_input['pose_index'][j]), " Target:", int(tp_input['pose_index'][j]), " View:", k, \
+                    print("[Test] ", " Target:", int(tp_input['pose_index'][j]), " View:", k, \
                         " Loss:", round(test_loss.item(), 5), \
                         " PSNR: ", {psnr})
                     total_psnr += mse2psnr(test_loss).item()
@@ -262,38 +304,41 @@ def test(chunk, render_kwargs, savedir=None, test_more=False):
                     if global_args.data_set_type in ["H36M_B", "H36M", "H36M_P", "H36M_B_All"]:
                         input_img = sp_input['img_all'][j].cpu().numpy()[..., 150:662, 250:762].transpose(2,0,3,1).reshape(512, -1, 3) * 255. #NCHW->HNWC
                     else:
-                        input_img = sp_input['img_all'][j].cpu().numpy().transpose(2,0,3,1).reshape(512, -1, 3) * 255. #NCHW->HNWC
-                    input_img = cv2.resize(input_img, (512*2, int(input_img.shape[0] * 512*2 / input_img.shape[1])))
+                        # input_img = sp_input['img_all'][j].cpu().numpy().transpose(2,0,3,1).reshape(512, -1, 3) * 255. #NCHW->HNWC
+                        input_img = sp_input['img_all'].transpose(0,2,3,1) * 255. #NCHW->HNWC
+                    # input_img = cv2.resize(input_img, (512*2, int(input_img.shape[0] * 512*2 / input_img.shape[1])))
                     # img = image_add_text(filename, 'PSNR: %f' % (psnr), 20, 20, text_color=(255, 255, 255), text_size=20)
                     img = rgb8
-                    img = np.concatenate([input_img, img], axis=0)
+                    input_img = np.concatenate([input_img[0], input_img[1], input_img[2]], axis=1)
+                    img = np.concatenate([input_img, img], axis=1)
                     imageio.imwrite(filename, to8b(img/255.))
 
-                    gt_filename = os.path.join(savedir, 'frame{:04d}_view{:04d}_gt.png'.format(int(tp_input['pose_index'][j])*data_interval+start_pose, k))
-                    pred_filename = os.path.join(savedir, 'frame{:04d}_view{:04d}.png'.format(int(tp_input['pose_index'][j])*data_interval+start_pose, k))
-                    imageio.imwrite(gt_filename, to8b(gt_img.cpu().numpy()))
-                    imageio.imwrite(pred_filename, to8b(img_pred.cpu().numpy()))
+                    # gt_filename = os.path.join(savedir, 'frame{:04d}_view{:04d}_gt.png'.format(int(tp_input['pose_index'][j])*data_interval+start_pose, k))
+                    # pred_filename = os.path.join(savedir, 'frame{:04d}_view{:04d}.png'.format(int(tp_input['pose_index'][j])*data_interval+start_pose, k))
+                    # imageio.imwrite(gt_filename, to8b(gt_img.cpu().numpy()))
+                    # imageio.imwrite(pred_filename, to8b(img_pred.cpu().numpy()))
                 else:
                     print("[Test] ", "Source:", int(sp_input['pose_index'][j]), " Target:", int(tp_input['pose_index'][j]), "View:", k)
+        break
     
     # render_kwargs['network_fn'].module.smooth_loss = pre
     avg_psnr = total_psnr / num
     np.save(savedir+'/psnr_{}.npy'.format(int(avg_psnr*100)), np.array(avg_psnr))
 
-    if global_args.data_set_type in ["H36M_B", "H36M_P", "H36M_B_All"]:
-        novel_pose = "_03.png"
-    elif global_args.data_set_type in ["THuman_B"]:
-        novel_pose = "_12.png"
-    else:
-        novel_pose = "_00.png"
-    # novel_pose = "_01.png"
-    images = [img for img in os.listdir(savedir) if img.endswith(novel_pose)]
-    images.sort()
-    images_to_video(savedir, video_name="novel_pose", images=images, fps=1)
+    # if global_args.data_set_type in ["H36M_B", "H36M_P", "H36M_B_All"]:
+    #     novel_pose = "_03.png"
+    # elif global_args.data_set_type in ["THuman_B"]:
+    #     novel_pose = "_12.png"
+    # else:
+    #     novel_pose = "_00.png"
+    # # novel_pose = "_01.png"
+    # images = [img for img in os.listdir(savedir) if img.endswith(novel_pose)]
+    # images.sort()
+    # images_to_video(savedir, video_name="novel_pose", images=images, fps=1)
     
-    images = [img for img in os.listdir(savedir) if img.startswith("00_00_")]
-    images.sort()
-    images_to_video(savedir, video_name="novel_view", images=images, fps=3)
+    # images = [img for img in os.listdir(savedir) if img.startswith("00_00_")]
+    # images.sort()
+    # images_to_video(savedir, video_name="novel_view", images=images, fps=3)
 
     return
 
@@ -324,8 +369,8 @@ def create_nerf(args, device=device):
     # Load checkpoints
     if args.ft_path is not None and args.ft_path!='None':
         ckpts = [os.path.join(basedir, expname, args.ft_path)]
-    else:
-        ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if '.tar' in f]
+    # else:
+    #     ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if '.tar' in f]
 
     print('Found ckpts', ckpts)
     if len(ckpts) > 0 and not args.no_reload:
@@ -446,13 +491,14 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
 
 def train(nprocs, global_args):
     args = global_args
-    training_set = return_dataset(global_args)
+    training_set, training_set_source = return_dataset(global_args)
 
     if args.ddp:
         train_sampler = torch.utils.data.distributed.DistributedSampler(training_set)
         training_loader = DataLoader(training_set, batch_size=1, num_workers=0, sampler=train_sampler)
     else:
-        training_loader = DataLoader(training_set, batch_size=global_args.batch_size, shuffle=True, num_workers=global_args.num_worker, pin_memory=False)
+        # training_loader = DataLoader(training_set, batch_size=global_args.batch_size, shuffle=False, num_workers=global_args.num_worker, pin_memory=False)
+        training_loader = DataLoader(training_set, batch_size=global_args.batch_size, shuffle=False, num_workers=0, pin_memory=False)
     
     # Multi-GPU
     args.n_gpus = torch.cuda.device_count()
@@ -526,8 +572,9 @@ def train(nprocs, global_args):
             training_loader.sampler.set_epoch(epoch)
 
         for i, data in enumerate(training_loader):
-            sp_input = data if not global_args.data_set_type in ["H36M_P", "THuman_P"] else data['sp_input']
+            # sp_input = data if not global_args.data_set_type in ["H36M_P", "THuman_P"] else data['sp_input']
             tp_input = data if not global_args.data_set_type in ["H36M_P", "THuman_P"] else data['tp_input']
+            sp_input = training_set_source[data['instance_idx']]
             sp_input, tp_input = to_cuda(device, sp_input, tp_input)
             time0 = time.time()
 
@@ -539,8 +586,8 @@ def train(nprocs, global_args):
                     far=tp_input['far_all'][:,k]
                     target_s = tp_input['rgb_all'][:, k]
                     bkgd_msk = tp_input['bkgd_msk_all'][:, k]
-                    sp_input['global_step'] = torch.ones_like(sp_input['pose_index']) * (global_step + k)
-                    sp_input['smooth_interval'] = torch.ones_like(sp_input['pose_index']) * global_args.smooth_interval
+                    sp_input['global_step'] = torch.ones_like(tp_input['pose_index']) * (global_step + k)
+                    sp_input['smooth_interval'] = torch.ones_like(tp_input['pose_index']) * global_args.smooth_interval
                     
                     ###  Core optimization loop  ###
                     rgb, _, acc, extras = render(chunk=args.chunk, rays=batch_rays, sp_input=sp_input, tp_input=tp_input,
@@ -565,6 +612,7 @@ def train(nprocs, global_args):
                     running_cor_smooth_loss += extras['other_loss'][0][2].item()
                     running_smpl_normal_loss += extras['other_loss'][0][3].item()
 
+                print(global_step, loss)
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
                 scaler.update()
@@ -623,7 +671,7 @@ def train(nprocs, global_args):
                 render_kwargs_train['network_fn'].eval()
 
                 with torch.no_grad():
-                    if  (global_step)%(args.i_weights)==0:
+                    if  (global_step)%(args.i_testset)==0:
 
                         testsavedir = testsavedir + '_more'
                         os.makedirs(testsavedir, exist_ok=True)
