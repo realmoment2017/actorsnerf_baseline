@@ -76,6 +76,8 @@ class NeuBodyDatasetBatch(Dataset):
             np.array(ims_data['ims'])[self.output_view]
             for ims_data in annots['ims'][self.i:self.i + self.ni * self.i_intv][::self.i_intv]
         ]) # image_name of all used images, shape (num of poses, num of output_views)
+        if poses_num==10 or poses_num==30 or poses_num==100 or poses_num==300:
+            self.ims = self.ims[1:]
 
         self.nrays = N_rand
         self.border = border
@@ -524,11 +526,40 @@ class NeuBodyDatasetBatch_Source(Dataset):
 
         if self.finetune_subject != 'None':
             if self.finetune_subject == 'CoreView_387':
-                self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000225.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==300:
+                    self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000225.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==100:
+                    self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000225.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==30:
+                    self.ims = np.array([['Camera_B1/000080.jpg'],['Camera_B1/000230.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==10:
+                    self.ims = np.array([['Camera_B1/000090.jpg'],['Camera_B1/000240.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==5:
+                    self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000225.jpg'],['Camera_B1/000300.jpg']])
+
             if self.finetune_subject == 'CoreView_393':
-                self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==300:
+                    self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==100:
+                    self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==30:
+                    self.ims = np.array([['Camera_B1/000080.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==10:
+                    self.ims = np.array([['Camera_B1/000090.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==5:
+                    self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+
             if self.finetune_subject == 'CoreView_394':
-                self.ims = np.array([['Camera_B1/000000.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==300:
+                    self.ims = np.array([['Camera_B1/000001.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==100:
+                    self.ims = np.array([['Camera_B1/000003.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==30:
+                    self.ims = np.array([['Camera_B1/000010.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==10:
+                    self.ims = np.array([['Camera_B1/000030.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+                if poses_num==5:
+                    self.ims = np.array([['Camera_B1/000000.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
 
     def __getitem__(self, instance_idx):
         
