@@ -1,3 +1,5 @@
+ CUDA_VISIBLE_DEVICES=4 python3 run_nerf_batch.py --config configs/zju_mocap-cate.txt --expname play
+
 
 ## MPS-NeRF: Generalizable 3D Human Rendering from Multiview Images (TPAMI 2022)
 <!-- --- -->

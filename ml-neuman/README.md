@@ -1,3 +1,5 @@
+CUDA_VISIBLE_DEVICES=2 python train.py --scene_dir ./data/zju_387  --name=play --train_mode=smpl_and_offset --every_K 30
+
 ## NeuMan: Neural Human Radiance Field from a Single Video
 
 This repository is a reference implementation for NeuMan. NeuMan reconstructs both the background scene and an animatable human from a single video using neural radiance fields.
