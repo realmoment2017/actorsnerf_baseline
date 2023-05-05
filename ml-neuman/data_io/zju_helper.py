@@ -143,16 +143,18 @@ def get_mask_paths(scene_dir):
     return all_masks
 
 
-def create_split_files(scene_dir):
+def create_split_files(scene_dir, every_K=None):
     # 10% as test set
     # 10% as validation set
     # 80% as training set
-    dummy_scene = ZjuMocapReader.read_scene(scene_dir)
+    dummy_scene = ZjuMocapReader.read_scene(scene_dir, every_K=every_K)
     scene_length = len(dummy_scene.captures)
-    num_val = scene_length // 5
+    # num_val = scene_length // 5
+    num_val = scene_length
     length = int(1 / (num_val) * scene_length)
     offset = length // 2
-    val_list = list(range(scene_length))[offset::length]
+    # val_list = list(range(scene_length))[offset::length]
+    val_list = list(range(scene_length))
     # train_list = list(set(range(scene_length)) - set(val_list))
     # MODIFY FOR ACTORSNERF BASELINE
     train_list = list(set(range(scene_length)))
@@ -180,11 +182,11 @@ class ZjuMocapReader():
         pass
 
     @classmethod
-    def read_scene(cls, scene_dir, tgt_size=None):
+    def read_scene(cls, scene_dir, tgt_size=None, every_K=None):
         # assert tgt_size is None
-        captures, num_views, num_cams = cls.read_captures(scene_dir, tgt_size)
+        captures, num_views, num_cams = cls.read_captures(scene_dir, tgt_size, every_K)
         scene = scene_module.RigCameraScene(captures, num_views, num_cams)
-        smpls, world_verts, static_verts, Ts, alignments = cls.read_smpls(scene_dir)
+        smpls, world_verts, static_verts, Ts, alignments = cls.read_smpls(scene_dir, every_K)
         assert scene.num_views == len(smpls) == len(world_verts) == len(Ts)
         scene.smpls, scene.verts, scene.Ts, scene.alignments = smpls, world_verts, Ts, alignments
         scene.static_vert = static_verts
@@ -213,7 +215,7 @@ class ZjuMocapReader():
         return scene
 
     @classmethod
-    def read_captures(cls, scene_dir, tgt_size):
+    def read_captures(cls, scene_dir, tgt_size, EVERY_K):
         cams = get_cams(scene_dir)
         T = np.array(cams['T'])
         R = np.array(cams['R'])
@@ -239,14 +241,14 @@ class ZjuMocapReader():
         mask_paths = get_mask_paths(scene_dir)
         # MODIFY FOR ACTORSNERF BASELINE
         MAX_VIEWS = 301
-        EVERY_K = 10
+        # EVERY_K = 10
         # MODIFY FOR ACTORSNERF BASELINE
         num_views = min(MAX_VIEWS, img_paths.shape[0])
         num_cams = img_paths.shape[1]
         assert num_cams==1
         counter = 0
         for view_id in range(num_views):
-            if view_id % EVERY_K != 0 or view_id==0:
+            if view_id % EVERY_K != 0 or (view_id==0 and EVERY_K!=75):
                 continue
             for cam_id in range(num_cams):
                 if tgt_size is None:
@@ -275,7 +277,7 @@ class ZjuMocapReader():
         return caps, num_views, num_cams
 
     @classmethod
-    def read_smpls(cls, scene_dir):
+    def read_smpls(cls, scene_dir, EVERY_K):
         device = torch.device('cpu')
         # body_model = SMPL('./sample_data/smplx/smpl',
         #                        gender='neutral',
@@ -293,13 +295,13 @@ class ZjuMocapReader():
         alignments = []
         # MODIFY FOR ACTORSNERF BASELINE
         MAX_VIEWS = 301
-        EVERY_K = 10
+        # EVERY_K = 10
         # MODIFY FOR ACTORSNERF BASELINE
         data_root = os.path.join(scene_dir, 'new_params')
         smpl_paths = glob.glob(os.path.join(data_root, '*.npy'))
         smpl_paths = sorted(smpl_paths,key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))[:MAX_VIEWS]
         for i, path in enumerate(smpl_paths):
-            if i % EVERY_K != 0 or i == 0:
+            if i % EVERY_K != 0 or (i==0 and EVERY_K!=75):
                 continue
             temp_smpl = (
                 np.load(path, allow_pickle=True).item()

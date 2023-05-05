@@ -27,6 +27,8 @@ from cameras.pinhole_camera import PinholeCamera
 from models.vanilla import weight_reset
 from utils.constant import HARD_SURFACE_OFFSET, PATCH_SIZE, PATCH_SIZE_SQUARED, CANONICAL_ZOOM_FACTOR, CANONICAL_CAMERA_DIST
 
+import wandb
+os.environ["WANDB_API_KEY"] = '98ba5671085279010bc574cd38696883848aa218'
 
 LOSS_NAMES = [
     'fine_rgb_loss',
@@ -171,6 +173,18 @@ class HumanNeRFTrainer():
             rp,
             tgt_size=render_size
         ) for rp in render_poses]
+
+        if opt.wandb:
+            # wandb setup
+            wandb_config = dict(
+                        scene_dir=opt.scene_dir,
+                        every_K_iter=opt.every_K,
+                    )
+            wandb.init(
+                    project="actorsnerf_baseline_neuman",
+                    name=opt.name,
+                    config=wandb_config,
+                    )
 
     def push_opt_to_tb(self):
         opt_str = options.opt_to_string(self.opt)
@@ -442,6 +456,18 @@ class HumanNeRFTrainer():
             assert torch.numel(temp_lpips_loss) == 1
             loss_dict['lpips_loss'] = loss_dict['lpips_loss'] + temp_lpips_loss.flatten()[0]
 
+        # wandb
+        if self.opt.wandb:
+            wandb.log({
+                'rgb_loss': loss_dict['fine_rgb_loss'].item(),
+                'mask_loss': loss_dict['mask_loss'].item(),
+                'sparsity_reg': loss_dict['sparsity_reg'].item(),
+                'smpl_shape_reg': loss_dict['smpl_shape_reg'].item(),
+                'smpl_sym_reg': loss_dict['smpl_sym_reg'].item(),
+                'color_range_reg': loss_dict['color_range_reg'].item(),
+                'lpips_loss': loss_dict['lpips_loss'].item(),
+            })
+
         # restart if the network is dead
         if human_out[..., 3].max() <= 0.0:
             print('bad weights, reinitializing')
@@ -531,7 +557,10 @@ class HumanNeRFTrainer():
             'optim_state_dict': self.optim.state_dict(),
             'hybrid_model_state_dict': self.net.state_dict(),
         }
-        torch.save(save_dict, os.path.join(self.out, 'checkpoint.pth.tar'))
+        torch.save(save_dict, os.path.join(self.out, '{}.pth.tar'.format(str(self.iteration))))
+        s3_ckpt = os.path.join(self.out, '{}.pth.tar'.format(str(self.iteration)))
+        if self.opt.wandb:
+            os.system("aws s3 cp {} s3://actorsnerf_baseline_neuman/{}".format(s3_ckpt, s3_ckpt))
 
     def push_validation_data(self, validation_data):
         render = vutils.make_grid(validation_data['render'], nrow=2, normalize=True, scale_each=True)

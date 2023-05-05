@@ -85,10 +85,11 @@ def train_background(opt):
 def train_human(opt):
     debug_dataset = 'zju_mocap'
     if debug_dataset=='zju_mocap':
-        train_split, val_split, _ = zju_helper.create_split_files(opt.scene_dir)
+        train_split, val_split, _ = zju_helper.create_split_files(opt.scene_dir, every_K=opt.every_K)
         train_scene = zju_helper.ZjuMocapReader.read_scene(
             opt.scene_dir,
             tgt_size=opt.tgt_size,
+            every_K=opt.every_K,
         )
     else:
         train_split, val_split, _ = neuman_helper.create_split_files(opt.scene_dir)
@@ -254,6 +255,8 @@ if __name__ == '__main__':
     parser.add_argument('--mask_dir', default='segmentations', type=str, help='mask folder')
     parser.add_argument('--smpl_type', default='optimized', type=str, choices=['romp', 'optimized'], help='smpl source')
     parser.add_argument('--dilation', type=int, default=30, help='mask dilation')
+    parser.add_argument('--every_K', type=int, default=60, help='mask dilation')
+    parser.add_argument('--wandb', type=str2bool, default=True, required=False)
 
     opt = parser.parse_args()
     if opt.image_height is not None or opt.image_width is not None:
