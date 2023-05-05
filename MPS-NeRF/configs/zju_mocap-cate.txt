@@ -7,8 +7,8 @@ use_trans = 1
 use_os_env = 0
 
 male = 0
-i_print = 100
-i_testset = 10000
+i_print = 10
+i_testset = 2000
 i_weights = 20000
 N_importance = 0
 N_iteration = 240100
@@ -55,7 +55,8 @@ white_bkgd = False
 with_viewdirs = 0
 
 finetune_subject = None
+ft_path = None
 start = 0
 interval = 1
 poses_num = 550
-ft_path = None
+wandb = False

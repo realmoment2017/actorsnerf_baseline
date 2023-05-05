@@ -84,10 +84,9 @@ class NeuBodyDatasetBatch(Dataset):
         self.image_scaling = image_scaling
         self.num_instance = num_instance
         self.multi_person = multi_person
-        all_human_data_root = os.path.join(os.path.dirname(data_root))
+        # all_human_data_root = os.path.join(os.path.dirname(data_root))
         
-
-        self.root_list = [data_root] if not multi_person else [os.path.join(all_human_data_root, x.strip()) for x in human_dirs]
+        self.root_list = [data_root] if not multi_person else [os.path.join(data_root, x.strip()) for x in human_dirs]
         print(self.root_list, len(self.ims), self.ims)
         
 
@@ -388,6 +387,7 @@ class NeuBodyDatasetBatch_Source(Dataset):
         self.i = start # start index 0
         self.i_intv = interval # interval 1
         self.ni = poses_num # number of used poses 30
+        self.poses_num = poses_num # number of used poses 30
 
         self.finetune_subject = finetune_subject
         if finetune_subject == 'None':
@@ -408,10 +408,10 @@ class NeuBodyDatasetBatch_Source(Dataset):
         self.image_scaling = image_scaling
         self.num_instance = num_instance
         self.multi_person = multi_person
-        all_human_data_root = os.path.join(os.path.dirname(data_root))
+        # all_human_data_root = os.path.join(os.path.dirname(data_root))
         
 
-        self.root_list = [data_root] if not multi_person else [os.path.join(all_human_data_root, x.strip()) for x in human_dirs]
+        self.root_list = [data_root] if not multi_person else [os.path.join(data_root, x.strip()) for x in human_dirs]
         print(self.root_list)
 
 
@@ -526,39 +526,39 @@ class NeuBodyDatasetBatch_Source(Dataset):
 
         if self.finetune_subject != 'None':
             if self.finetune_subject == 'CoreView_387':
-                if poses_num==300:
+                if self.poses_num==300:
                     self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000225.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==100:
+                if self.poses_num==100:
                     self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000225.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==30:
+                if self.poses_num==30:
                     self.ims = np.array([['Camera_B1/000080.jpg'],['Camera_B1/000230.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==10:
+                if self.poses_num==10:
                     self.ims = np.array([['Camera_B1/000090.jpg'],['Camera_B1/000240.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==5:
+                if self.poses_num==5:
                     self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000225.jpg'],['Camera_B1/000300.jpg']])
 
             if self.finetune_subject == 'CoreView_393':
-                if poses_num==300:
+                if self.poses_num==300:
                     self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==100:
+                if self.poses_num==100:
                     self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==30:
+                if self.poses_num==30:
                     self.ims = np.array([['Camera_B1/000080.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==10:
+                if self.poses_num==10:
                     self.ims = np.array([['Camera_B1/000090.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==5:
+                if self.poses_num==5:
                     self.ims = np.array([['Camera_B1/000075.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
 
             if self.finetune_subject == 'CoreView_394':
-                if poses_num==300:
+                if self.poses_num==300:
                     self.ims = np.array([['Camera_B1/000001.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==100:
+                if self.poses_num==100:
                     self.ims = np.array([['Camera_B1/000003.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==30:
+                if self.poses_num==30:
                     self.ims = np.array([['Camera_B1/000010.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==10:
+                if self.poses_num==10:
                     self.ims = np.array([['Camera_B1/000030.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
-                if poses_num==5:
+                if self.poses_num==5:
                     self.ims = np.array([['Camera_B1/000000.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
 
     def __getitem__(self, instance_idx):
@@ -579,18 +579,20 @@ class NeuBodyDatasetBatch_Source(Dataset):
         for idx, _ in enumerate(list(range(3))):
             view_index = 0
             idx = 0
-            pose_index = np.random.randint(len(self.ims))
             # Load image, mask, K, D, R, T
             if self.finetune_subject=='None':
+                pose_index = np.random.randint(len(self.ims))
                 img_path = os.path.join(self.data_root, self.ims[pose_index][idx].replace('\\', '/'))
+                msk, origin_msk = np.array(self.get_mask(pose_index, idx))
             else:
+                pose_index = int(self.ims[finetune_idx][idx][-10:-4])
                 img_path = os.path.join(self.data_root, self.ims[finetune_idx][idx].replace('\\', '/'))
+                msk, origin_msk = np.array(self.get_mask(finetune_idx, idx))
             img = np.array(imageio.imread(img_path).astype(np.float32) / 255.)
             # if os.path.basename(self.data_root) == 'CoreView_396':
             #     pose_index= pose_index + 810
             # if os.path.basename(self.data_root) == 'CoreView_390':
             #     pose_index= pose_index+ 1150
-            msk, origin_msk = np.array(self.get_mask(pose_index, idx))
 
             K = np.array(self.cams['K'][view_index])
             D = np.array(self.cams['D'][view_index])

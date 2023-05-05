@@ -104,7 +104,8 @@ def config_parser():
 
     parser.add_argument("--finetune_subject", type=str, default='None', 
                         help='Finetune def')
- 
+    parser.add_argument("--wandb", action='store_true', 
+                        help='use wandb for logging')
 
     return parser
 

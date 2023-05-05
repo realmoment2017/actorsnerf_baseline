@@ -22,6 +22,9 @@ from lib.all_test import test_H36M, test_THuman_ssim
 
 import random
 
+import wandb
+os.environ["WANDB_API_KEY"] = '98ba5671085279010bc574cd38696883848aa218'
+
 os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
 os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
@@ -317,6 +320,11 @@ def test(chunk, render_kwargs, savedir=None, test_more=False):
                     # pred_filename = os.path.join(savedir, 'frame{:04d}_view{:04d}.png'.format(int(tp_input['pose_index'][j])*data_interval+start_pose, k))
                     # imageio.imwrite(gt_filename, to8b(gt_img.cpu().numpy()))
                     # imageio.imwrite(pred_filename, to8b(img_pred.cpu().numpy()))
+
+                    if global_args.wandb:
+                        wandb_img = wandb.Image(to8b(img/255.), caption="Image")
+                        wandb.log({"images": wandb_img})
+
                 else:
                     print("[Test] ", "Source:", int(sp_input['pose_index'][j]), " Target:", int(tp_input['pose_index'][j]), "View:", k)
         break
@@ -372,19 +380,19 @@ def create_nerf(args, device=device):
     # else:
     #     ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if '.tar' in f]
 
-    print('Found ckpts', ckpts)
-    if len(ckpts) > 0 and not args.no_reload:
-        ckpt_path = ckpts[-1]
-        print('Reloading from', ckpt_path)
-        ckpt = torch.load(ckpt_path)
+        print('Found ckpts', ckpts)
+        if len(ckpts) > 0 and not args.no_reload:
+            ckpt_path = ckpts[-1]
+            print('Reloading from', ckpt_path)
+            ckpt = torch.load(ckpt_path)
 
-        start = ckpt['global_step']
-        # optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+            start = ckpt['global_step']
+            # optimizer.load_state_dict(ckpt['optimizer_state_dict'])
 
-        # Load model
-        model.load_state_dict(ckpt['network_fn_state_dict'])
-        if model_fine is not None:
-            model_fine.load_state_dict(ckpt['network_fine_state_dict'])
+            # Load model
+            model.load_state_dict(ckpt['network_fn_state_dict'])
+            if model_fine is not None:
+                model_fine.load_state_dict(ckpt['network_fine_state_dict'])
 
     if global_args.ddp:
         local_rank = global_args.local_rank
@@ -642,6 +650,13 @@ def train(nprocs, global_args):
                 writer.add_scalar("smpl normal loss", running_smpl_normal_loss / args.i_print * args.smooth_interval, global_step)
                 writer.add_scalar("psnr", psnr, global_step)
                 print("[TRAIN] Epoch:{}  Iter: {}  Loss: {} PSNR: {}  Time: {} s/iter".format(epoch, global_step, round(running_loss / args.i_print, 5), psnr, round(dt, 3)))
+                if args.wandb:
+                    wandb_dic = {}
+                    loss_names = ['loss', 'image loss', 'acc weight loss', 'density loss']
+                    loss_vals = [running_loss / args.i_print, running_img_loss / args.i_print, running_acc_loss / args.i_print, running_density_loss / args.i_print]
+                    for i in range(len(loss_names)):
+                        wandb_dic[loss_names[i]] = loss_vals[i]
+                wandb.log(wandb_dic)
                 running_loss = 0.0
                 running_img_loss = 0.0
                 running_acc_loss = 0.0
@@ -663,6 +678,7 @@ def train(nprocs, global_args):
                         # 'optimizer_state_dict': optimizer.state_dict(),
                     }, path)
                     print('Saved checkpoints at', path)
+                    os.system("aws s3 cp {} s3://actorsnerf_baseline_MPSNerf/{}".format(path, path))   
             
             # print(global_step, args.i_testset, args.i_weights)
             if (global_step%args.i_testset) == 0 and global_step > 1:
@@ -706,4 +722,20 @@ if __name__=='__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
     print_args(global_args)
     torch.multiprocessing.set_start_method('spawn', force=True)
+
+    if global_args.wandb:
+        # wandb setup
+        wandb_config = dict(
+                finetune_subject = global_args.finetune_subject,
+                ft_path = global_args.ft_path,
+                interval = global_args.interval,
+                poses_num = global_args.poses_num,
+                )
+        if global_args.wandb:
+            wandb.init(
+                    project="actorsnerf_baseline_MPSNerf",
+                    name=global_args.expname,
+                    config=wandb_config,
+                    )
+
     train(torch.cuda.device_count(), global_args)
