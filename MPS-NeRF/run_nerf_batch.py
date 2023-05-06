@@ -656,7 +656,7 @@ def train(nprocs, global_args):
                     loss_vals = [running_loss / args.i_print, running_img_loss / args.i_print, running_acc_loss / args.i_print, running_density_loss / args.i_print]
                     for i in range(len(loss_names)):
                         wandb_dic[loss_names[i]] = loss_vals[i]
-                wandb.log(wandb_dic)
+                    wandb.log(wandb_dic)
                 running_loss = 0.0
                 running_img_loss = 0.0
                 running_acc_loss = 0.0

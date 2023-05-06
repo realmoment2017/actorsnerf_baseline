@@ -560,6 +560,11 @@ class NeuBodyDatasetBatch_Source(Dataset):
                     self.ims = np.array([['Camera_B1/000030.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
                 if self.poses_num==5:
                     self.ims = np.array([['Camera_B1/000000.jpg'],['Camera_B1/000150.jpg'],['Camera_B1/000300.jpg']])
+        else:
+            self.ims = np.array([
+                np.array(ims_data['ims'])[self.output_view]
+                for ims_data in annots['ims'][self.i + offset:self.i + offset + self.ni * self.i_intv][::self.i_intv]
+            ]) # image_name of all used images, shape (num of poses, num of output_views)
 
     def __getitem__(self, instance_idx):
         
