@@ -58,5 +58,5 @@ finetune_subject = None
 ft_path = None
 start = 0
 interval = 1
-poses_num = 550
-wandb = False
+poses_num = 540
+wandb = True
