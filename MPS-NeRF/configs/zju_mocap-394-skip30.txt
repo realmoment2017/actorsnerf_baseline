@@ -54,9 +54,9 @@ use_viewdirs = True
 white_bkgd = False
 with_viewdirs = 0
 
-finetune_subject = 'CoreView_387'
+finetune_subject = 'CoreView_394'
 ft_path = 'logs/category-pretrain/140000.tar'
 start = 0
-interval = 3
-poses_num = 100
+interval = 30
+poses_num = 10
 wandb = True

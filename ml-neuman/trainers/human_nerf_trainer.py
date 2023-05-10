@@ -560,7 +560,7 @@ class HumanNeRFTrainer():
         torch.save(save_dict, os.path.join(self.out, '{}.pth.tar'.format(str(self.iteration))))
         s3_ckpt = os.path.join(self.out, '{}.pth.tar'.format(str(self.iteration)))
         if self.opt.wandb:
-            os.system("aws s3 cp {} s3://actorsnerf_baseline_neuman/{}".format(s3_ckpt, s3_ckpt))
+            os.system("aws s3 cp {} s3://actorsnerf-baseline-neuman/{}".format(s3_ckpt, s3_ckpt))
 
     def push_validation_data(self, validation_data):
         render = vutils.make_grid(validation_data['render'], nrow=2, normalize=True, scale_each=True)

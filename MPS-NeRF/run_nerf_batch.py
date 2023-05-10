@@ -678,7 +678,7 @@ def train(nprocs, global_args):
                         # 'optimizer_state_dict': optimizer.state_dict(),
                     }, path)
                     print('Saved checkpoints at', path)
-                    os.system("aws s3 cp {} s3://actorsnerf_baseline_MPSNerf/{}".format(path, path))   
+                    os.system("aws s3 cp {} s3://actorsnerf-baseline-mpsnerf/{}".format(path, path))   
             
             # print(global_step, args.i_testset, args.i_weights)
             if (global_step%args.i_testset) == 0 and global_step > 1:
