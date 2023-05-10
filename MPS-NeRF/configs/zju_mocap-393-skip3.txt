@@ -55,7 +55,7 @@ white_bkgd = False
 with_viewdirs = 0
 
 finetune_subject = 'CoreView_393'
-ft_path = 'logs/category-pretrain/140000.tar'
+ft_path = '../category-pretrain/140000.tar'
 start = 0
 interval = 3
 poses_num = 100
