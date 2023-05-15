@@ -506,7 +506,7 @@ def train(nprocs, global_args):
         training_loader = DataLoader(training_set, batch_size=1, num_workers=0, sampler=train_sampler)
     else:
         # training_loader = DataLoader(training_set, batch_size=global_args.batch_size, shuffle=False, num_workers=global_args.num_worker, pin_memory=False)
-        training_loader = DataLoader(training_set, batch_size=global_args.batch_size, shuffle=False, num_workers=0, pin_memory=False)
+        training_loader = DataLoader(training_set, batch_size=global_args.batch_size, shuffle=True, num_workers=0, pin_memory=False, generator=torch.Generator(device='cuda'))
     
     # Multi-GPU
     args.n_gpus = torch.cuda.device_count()

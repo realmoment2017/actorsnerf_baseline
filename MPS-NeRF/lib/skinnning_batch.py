@@ -159,9 +159,9 @@ class SKinningBatch(nn.Module):
         nerf_input_ch_2 = 384 if not append_rgb else (128+256+27) # 128 fused feature + 256 alpha feature + rgb code 
         self.views_linear = nn.Linear((nerf_input_ch_2+27) if self.with_viewdirs else nerf_input_ch_2, W//2)
         self.transformer = None if not use_trans else Transformer(128 if not append_rgb else (128+27))
-        self.latent_codes = nn.Embedding(num_instances, 128)
+        # self.latent_codes = nn.Embedding(num_instances, 128)
         self.extract_mesh = False
-        nn.init.normal_(self.latent_codes.weight, mean=0, std=0.01)
+        # nn.init.normal_(self.latent_codes.weight, mean=0, std=0.01)
 
     def normalize_pts(self, source_pts, bounds):
         # bounds 2 * 3
@@ -445,14 +445,15 @@ class SKinningBatch(nn.Module):
             canonical_pts = world_query_pts
             pts_mask = torch.ones_like(canonical_pts[:,0]).cuda().int()
 
-        ## Use Skinning weights Field to do deform
-        instance_idx = tp_input['instance_idx'].long()
-        embedding = self.latent_codes(instance_idx)
-        fused_feature = self.backward_fusion(canonical_pts.clone(), embedding)
-        if self.skinning_field:
-            weights_correction = self.backward_deform(fused_feature.float())
-        else:
-            weights_correction = 0.
+        # #Use Skinning weights Field to do deform
+        # instance_idx = tp_input['instance_idx'].long()
+        # embedding = self.latent_codes(instance_idx)
+        # fused_feature = self.backward_fusion(canonical_pts.clone(), embedding)
+        # if self.skinning_field:
+        #     weights_correction = self.backward_deform(fused_feature.float())
+        # else:
+        #     weights_correction = 0.
+        weights_correction = 0.
 
         smpl_src_pts_all = []
         world_src_pts_all = []

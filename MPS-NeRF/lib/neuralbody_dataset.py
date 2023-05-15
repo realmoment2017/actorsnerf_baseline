@@ -39,7 +39,7 @@ class NeuBodyDatasetBatch(Dataset):
         self.train_view =  self.input_view # self.input_view# [x for x in range(23)] # remove 3,4,6 / 2,3,5
         
         # TODO
-        self.test_view = [x for x in range(20)] # [0, 1, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ] # , 21, 22] # [0,6,12,18]#
+        self.test_view = [x for x in range(1, 23)] # [0, 1, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ] # , 21, 22] # [0,6,12,18]#
         # self.test_view =  [0, 1, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] # , 21, 22] # [0,6,12,18]#
         self.output_view = self.train_view if split == 'train' else self.test_view
         
@@ -72,12 +72,18 @@ class NeuBodyDatasetBatch(Dataset):
         else:
             human_dirs = [finetune_subject]
 
-        self.ims = np.array([
-            np.array(ims_data['ims'])[self.output_view]
-            for ims_data in annots['ims'][self.i:self.i + self.ni * self.i_intv][::self.i_intv]
-        ]) # image_name of all used images, shape (num of poses, num of output_views)
-        if poses_num==10 or poses_num==30 or poses_num==100 or poses_num==300:
-            self.ims = self.ims[1:]
+        if self.split=='test':
+            self.ims = np.array([
+                np.array(ims_data['ims'])[self.output_view]
+                for ims_data in annots['ims'][self.i:][::self.i_intv]
+            ])
+        else:
+            self.ims = np.array([
+                np.array(ims_data['ims'])[self.output_view]
+                for ims_data in annots['ims'][self.i:self.i + self.ni * self.i_intv][::self.i_intv]
+            ]) # image_name of all used images, shape (num of poses, num of output_views)
+            if poses_num==10 or poses_num==30 or poses_num==100 or poses_num==300:
+                self.ims = self.ims[1:]
 
         self.nrays = N_rand
         self.border = border
@@ -260,12 +266,11 @@ class NeuBodyDatasetBatch(Dataset):
             # Pack all inputs of all views
             img = np.transpose(img, (2,0,1))
             img_ray_d = np.transpose(img_ray_d, (2,0,1))
-            if view_index in self.input_view:
-                img_all.append(img)
-                img_ray_d_all.append(img_ray_d)
-                K_all.append(K)
-                R_all.append(R)
-                T_all.append(T)
+            img_all.append(img)
+            img_ray_d_all.append(img_ray_d)
+            K_all.append(K)
+            R_all.append(R)
+            T_all.append(T)
             msk_all.append(msk)
             rgb_all.append(rgb)
             ray_o_all.append(ray_o)
