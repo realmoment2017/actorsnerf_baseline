@@ -178,7 +178,7 @@ def test(chunk, render_kwargs, savedir=None, global_args=None):
         # start_pose = 180 + 3*60 # 300
         # data_interval = 60
         # poses_num = 5
-        interval = 1
+        interval = 10
         # human_name = "human_377"
         # human_names = ['CoreView_313', 'CoreView_315', 'CoreView_377', 'CoreView_386', 'CoreView_387', 'CoreView_390', 'CoreView_392', 'CoreView_393', 'CoreView_394', 'CoreView_396']
         # human_name = random.choice(human_names)
@@ -300,8 +300,8 @@ def test(chunk, render_kwargs, savedir=None, global_args=None):
 
                 evaluator.evaluate(img_pred.cpu().numpy(), gt_img.cpu().numpy())
 
-            evaluator.summarize()
-            
+            mse, psnr, ssim, lpips = evaluator.summarize()
+           
                 # if k < 24:
                 #     # img_pred[msk[j]==100] = 0
                 #     # gt_img[msk[j]==100] = 0
@@ -332,7 +332,10 @@ def test(chunk, render_kwargs, savedir=None, global_args=None):
                 # else:
                 #     print("[Test] ", "Source:", int(sp_input['pose_index'][j]), " Target:", int(tp_input['pose_index'][j]), "View:", k)
     
-    evaluator.summarize()
+    mse, psnr, ssim, lpips = evaluator.summarize()
+    lst = [mse, psnr, ssim, 1000*lpips]
+    np.savetxt(os.path.join(os.path.dirname(filename), 'eval.txt'), np.array(lst), fmt='%10.4f')
+ 
     # render_kwargs['network_fn'].module.smooth_loss = pre
     # avg_psnr = total_psnr / num
     # np.save(savedir+'/psnr_{}.npy'.format(int(avg_psnr*100)), np.array(avg_psnr))
@@ -771,6 +774,7 @@ class Evaluator:
         print('psnr: {}'.format(np.mean(self.psnr)))
         print('ssim: {}'.format(np.mean(self.ssim)))
         print('lpips: {}'.format(np.mean(self.lpips)))
+        return np.mean(self.mse), np.mean(self.psnr), np.mean(self.ssim), np.mean(self.lpips)
 
 if __name__=='__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
