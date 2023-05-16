@@ -54,9 +54,9 @@ use_viewdirs = True
 white_bkgd = False
 with_viewdirs = 0
 
-finetune_subject = 'CoreView_387'
-ft_path = '../mpsnerf_387_skip30/iter_220000.tar'
+finetune_subject = 'CoreView_394'
+ft_path = '../mpsnerf_394_skip1/iter_220000.tar'
 start = 301
-interval = 30
-poses_num = 10
+interval = 1
+poses_num = 300
 wandb = False

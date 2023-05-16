@@ -55,7 +55,7 @@ white_bkgd = False
 with_viewdirs = 0
 
 finetune_subject = 'CoreView_387'
-ft_path = '../zju_mocap-387-skip3/iter_220000.tar'
+ft_path = '../mpsnerf_387_skip3/iter_220000.tar'
 start = 301
 interval = 3
 poses_num = 100
