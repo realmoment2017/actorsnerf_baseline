@@ -64,23 +64,25 @@ class Dataset(data.Dataset):
             if self.human in ['d16', 'd17', 'd18', 'd19', 'd20']: # for AIST++
                 ni = 30
                 i_intv = 10
-                skip = 5
+                skip = 60
                 if skip==60:
+                    i_intv = 75
+                    ni = 5
                     if self.human == 'd16':
-                        f_idxs = [200,564,824,832,840]
+                        render_framelist = ['c01/000200.jpg', 'c01/000564.jpg', 'c01/000824.jpg', 'c01/000832.jpg', 'c01/000840.jpg']
                     if self.human == 'd17':
-                        f_idxs = [200,564,1228,1240,1252]
+                        render_framelist = ['c01/000200.jpg', 'c01/000564.jpg', 'c01/001228.jpg', 'c01/001240.jpg', 'c01/001252.jpg']
                     if self.human == 'd18':
-                        f_idxs = [200,500,708,736,780]
+                        render_framelist = ['c01/000200.jpg', 'c01/000500.jpg', 'c01/000708.jpg', 'c01/000736.jpg', 'c01/000780.jpg']
                     if self.human == 'd19':
-                        f_idxs = [212,280,408,556,564]
+                        render_framelist = ['c01/000212.jpg', 'c01/000280.jpg', 'c01/000408.jpg', 'c01/000556.jpg', 'c01/000564.jpg']
                     if self.human == 'd20':
-                        f_idxs = [200,240,644,700,712]
-                    select_framelist = []
-                    for f_idx in f_idxs:
-                        f_idx = (f_idx-200)//4
-                        select_framelist.append(framelist[f_idx])
-                    framelist = select_framelist
+                        render_framelist = ['c01/000200.jpg', 'c01/000240.jpg' , 'c01/000644.jpg', 'c01/000700.jpg', 'c01/000712.jpg']
+                    self.ims = np.array(render_framelist)
+                    self.cam_inds = np.array([
+                            np.arange(len(ims_data['ims']))[view]
+                            for ims_data in annots['ims'][i:i + ni * i_intv][::i_intv]
+                        ]).ravel()
     
                 else:
                     maxframes = 300
