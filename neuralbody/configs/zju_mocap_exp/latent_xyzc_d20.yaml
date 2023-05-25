@@ -21,4 +21,4 @@ test_dataset:
 num_train_frame: 300
 H: 1080
 W: 1920
-white_bkg: True
+white_bkgd: True
