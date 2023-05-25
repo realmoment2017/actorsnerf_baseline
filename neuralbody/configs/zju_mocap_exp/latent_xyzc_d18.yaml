@@ -1,0 +1,24 @@
+task: 'if_nerf'
+gpus: [0]
+
+parent_cfg: 'configs/zju_mocap_exp/latent_xyzc_313.yaml'
+
+human: 18
+
+train_dataset:
+    data_root: 'data/AIST_mocap/d18'
+    human: 'd18'
+    ann_file: 'data/AIST_mocap/d18/annots.npy'
+    split: 'train'
+
+test_dataset:
+    data_root: 'data/AIST_mocap/d18'
+    human: 'd18'
+    ann_file: 'data/AIST_mocap/d18/annots.npy'
+    split: 'test'
+
+# data options
+num_train_frame: 300
+H: 1080
+W: 1920
+white_bkg: True

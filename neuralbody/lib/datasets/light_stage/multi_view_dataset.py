@@ -60,6 +60,51 @@ class Dataset(data.Dataset):
                 np.arange(len(ims_data['ims']))[view]
                 for ims_data in annots['ims'][i:i + ni * i_intv][::i_intv]
             ]).ravel()[1:]
+
+            if self.human in ['d16', 'd17', 'd18', 'd19', 'd20']: # for AIST++
+                ni = 30
+                i_intv = 10
+                skip = 5
+                if skip==60:
+                    if self.human == 'd16':
+                        f_idxs = [200,564,824,832,840]
+                    if self.human == 'd17':
+                        f_idxs = [200,564,1228,1240,1252]
+                    if self.human == 'd18':
+                        f_idxs = [200,500,708,736,780]
+                    if self.human == 'd19':
+                        f_idxs = [212,280,408,556,564]
+                    if self.human == 'd20':
+                        f_idxs = [200,240,644,700,712]
+                    select_framelist = []
+                    for f_idx in f_idxs:
+                        f_idx = (f_idx-200)//4
+                        select_framelist.append(framelist[f_idx])
+                    framelist = select_framelist
+    
+                else:
+                    maxframes = 300
+                    framelist = np.array([
+                        np.array(ims_data['ims'])[view]
+                        for ims_data in annots['ims'][i:i + ni * i_intv][::i_intv]
+                    ]).ravel()[:-3]
+                    if self.human == 'd16':
+                        render_framelist = ['c01/000204.jpg', 'c01/000832.jpg', 'c01/000844.jpg']
+                    if self.human == 'd17':
+                        render_framelist = ['c01/000564.jpg', 'c01/001228.jpg', 'c01/001252.jpg']
+                    if self.human == 'd18':
+                        render_framelist = ['c01/000204.jpg', 'c01/000708.jpg', 'c01/000736.jpg']
+                    if self.human == 'd19':
+                        render_framelist = ['c01/000212.jpg', 'c01/000408.jpg', 'c01/000556.jpg']
+                    if self.human == 'd20':
+                        render_framelist = ['c01/000204.jpg', 'c01/000700.jpg', 'c01/000712.jpg']
+                    self.ims = np.array(render_framelist + list(framelist))
+ 
+                    self.cam_inds = np.array([
+                        np.arange(len(ims_data['ims']))[view]
+                        for ims_data in annots['ims'][i:i + ni * i_intv][::i_intv]
+                    ]).ravel()
+            
         else:
             self.ims = np.array([
                 np.array(ims_data['ims'])[view]
@@ -76,9 +121,14 @@ class Dataset(data.Dataset):
         print(self.ims)
 
     def get_mask(self, index):
-        msk_path = os.path.join(self.data_root, 'mask_cihp',
+        if self.human in ['d16', 'd17', 'd18', 'd19', 'd20']:
+            msk_path = os.path.join(self.data_root, 'mask',
+                                    self.ims[index])[:-4] + '.png'
+            msk_cihp = imageio.imread(msk_path)[..., 0]
+        else:
+            msk_path = os.path.join(self.data_root, 'mask_cihp',
                                 self.ims[index])[:-4] + '.png'
-        msk_cihp = imageio.imread(msk_path)
+            msk_cihp = imageio.imread(msk_path)
         msk = (msk_cihp != 0).astype(np.uint8)
 
         border = 5
@@ -88,6 +138,93 @@ class Dataset(data.Dataset):
         msk[(msk_dilate - msk_erode) == 1] = 100
 
         return msk
+
+
+    # def data_loader_check(self, min_xyz, max_xyz, vertices):
+    #     import torch
+    #     import wis3d
+
+    #     def min_max_to_bbox_8points(min_coord, max_coord):
+    #         a, b, c = min_coord
+    #         d, e, f = max_coord
+    #         points = torch.zeros((8,3))
+    #         points[0] = torch.tensor([a, b, c])
+    #         points[1] = torch.tensor([d, b, c])
+    #         points[2] = torch.tensor([d, b, f])
+    #         points[3] = torch.tensor([a, b, f])
+    #         points[4] = torch.tensor([a, e, c])
+    #         points[5] = torch.tensor([d, e, c])
+    #         points[6] = torch.tensor([d, e, f])
+    #         points[7] = torch.tensor([a, e, f])
+    #         return points
+
+    #     from wis3d import Wis3D
+    #     wis_dir = "/data/jiteng/gdrive"
+    #     wis3d = Wis3D(wis_dir, 'figures')
+    #     pbbox = min_max_to_bbox_8points(min_coord=min_xyz, max_coord=max_xyz)
+    #     wis3d.add_boxes(pbbox, name='pbbox', labels='pbbox')
+    #     colors = torch.tensor([[255,0,0]]).repeat(6890,1)
+    #     wis3d.add_point_cloud(vertices, colors, name='tsmpl')
+    #     breakpoint()
+
+    # def check_input(self, i, K, RT, msk):
+    #     # read xyz, normal, color from the ply file
+    #     vertices_path = os.path.join(self.data_root, cfg.vertices,
+    #                                  '{}.npy'.format(i))
+    #     xyz = np.load(vertices_path).astype(np.float32)
+    #     nxyz = np.zeros_like(xyz).astype(np.float32)
+
+    #     # obtain the original bounds for point sampling
+    #     min_xyz = np.min(xyz, axis=0)
+    #     max_xyz = np.max(xyz, axis=0)
+    #     if cfg.big_box:
+    #         min_xyz -= 0.05
+    #         max_xyz += 0.05
+    #     else:
+    #         min_xyz[2] -= 0.05
+    #         max_xyz[2] += 0.05
+    #     can_bounds = np.stack([min_xyz, max_xyz], axis=0)
+
+    #     # transform smpl from the world coordinate to the smpl coordinate
+    #     params_path = os.path.join(self.data_root, cfg.params,
+    #                                '{}.npy'.format(i))
+    #     params = np.load(params_path, allow_pickle=True).item()
+    #     # self.data_loader_check(min_xyz, max_xyz, xyz)
+    #     breakpoint()
+    #     import matplotlib.pyplot as plt
+    #     from lib.utils.base_utils import project
+    #     plt.imshow(msk)
+    #     plt.plot(project(xyz, K, RT)[:,0], project(xyz, K, RT)[:,1], 'ro')
+    #     plt.savefig('plot.png')
+    #     Rh = params['Rh']
+    #     R = cv2.Rodrigues(Rh)[0].astype(np.float32)
+    #     Th = params['Th'].astype(np.float32)
+    #     xyz = np.dot(xyz - Th, R)
+
+    #     # obtain the bounds for coord construction
+    #     min_xyz = np.min(xyz, axis=0)
+    #     max_xyz = np.max(xyz, axis=0)
+    #     if cfg.big_box:
+    #         min_xyz -= 0.05
+    #         max_xyz += 0.05
+    #     else:
+    #         min_xyz[2] -= 0.05
+    #         max_xyz[2] += 0.05
+    #     bounds = np.stack([min_xyz, max_xyz], axis=0)
+
+    #     # construct the coordinate
+    #     dhw = xyz[:, [2, 1, 0]]
+    #     min_dhw = min_xyz[[2, 1, 0]]
+    #     max_dhw = max_xyz[[2, 1, 0]]
+    #     voxel_size = np.array(cfg.voxel_size)
+    #     coord = np.round((dhw - min_dhw) / voxel_size).astype(np.int32)
+
+    #     # construct the output shape
+    #     out_sh = np.ceil((max_dhw - min_dhw) / voxel_size).astype(np.int32)
+    #     x = 32
+    #     out_sh = (out_sh | (x - 1)) + 1
+
+    #     return coord, out_sh, can_bounds, bounds, Rh, Th
 
     def prepare_input(self, i):
         # read xyz, normal, color from the ply file
@@ -169,9 +306,15 @@ class Dataset(data.Dataset):
         if self.human in ['CoreView_313', 'CoreView_315']:
             i = int(os.path.basename(img_path).split('_')[4])
             frame_index = i - 1
+        elif self.human in ['d16', 'd17', 'd18', 'd19', 'd20']:
+            i = int(os.path.basename(img_path)[:-4])
+            frame_index = i
         else:
             i = int(os.path.basename(img_path)[:-4])
             frame_index = i
+
+        # coord, out_sh, can_bounds, bounds, Rh, Th = self.check_input(
+        #     i, K, np.concatenate((R, T), axis=1), msk)
         coord, out_sh, can_bounds, bounds, Rh, Th = self.prepare_input(
             i)
 
