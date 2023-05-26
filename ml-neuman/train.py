@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 
 from data_io import neuman_helper
 from data_io import zju_helper
+from data_io import AIST_helper
 from utils import utils
 from datasets import background_rays, human_rays
 from options.options import str2bool
@@ -91,6 +92,13 @@ def train_human(opt):
             tgt_size=opt.tgt_size,
             every_K=opt.every_K,
         )
+    elif debug_dataset=='AIST_mocap':
+        train_split, val_split, _ = AIST_helper.create_split_files(opt.scene_dir, every_K=opt.every_K)
+        train_scene = AIST_helper.ZjuMocapReader.read_scene(
+            opt.scene_dir,
+            tgt_size=opt.tgt_size,
+            every_K=opt.every_K,
+        )
     else:
         train_split, val_split, _ = neuman_helper.create_split_files(opt.scene_dir)
         train_scene = neuman_helper.NeuManReader.read_scene(
@@ -111,7 +119,7 @@ def train_human(opt):
         opt.geo_threshold = np.mean(bones)
     poses = np.stack([item['pose'] for item in train_scene.smpls])
     betas = np.stack([item['betas'] for item in train_scene.smpls])
-    if debug_dataset=='zju_mocap':
+    if debug_dataset=='zju_mocap' or debug_dataset=='AIST_mocap':
         raw_alignments = train_scene.alignments
         alignments2 = np.stack(raw_alignments)
     else:
@@ -121,7 +129,7 @@ def train_human(opt):
         alignments2[..., :3] = alignments
     net = human_nerf.HumanNeRF(opt, poses.copy(), betas.copy(), alignments2.copy(), scale=train_scene.scale)
     device = next(net.parameters()).device
-    if debug_dataset=='zju_mocap':
+    if debug_dataset=='zju_mocap' or debug_dataset=='AIST_mocap':
         train_scene.read_data_to_ram(data_list=['image'])
     else:
         train_scene.read_data_to_ram(data_list=['image', 'depth'])
