@@ -19,8 +19,8 @@ from scenes import scene as scene_module
 from utils import debug_utils, utils, ray_utils
 from models.smpl import SMPL, batch_rodrigues
 
-MAX_VIEWS = 550
-EVERY_K=1
+MAX_VIEWS = 1000
+EVERY_K = 1
 
 
 '''
@@ -101,7 +101,7 @@ def get_cams(scene_dir, TABU_CAMS):
     annots = np.load(os.path.join(scene_dir, 'annots.npy'), allow_pickle=True).item()
     all_cams = annots['cams']
     cams = {'K': [], 'D': [], 'R': [], 'T': []}
-    for i in range(23):
+    for i in range(9):
         if i in TABU_CAMS:
             continue
         cams['K'].append(all_cams['K'][i])
@@ -112,7 +112,7 @@ def get_cams(scene_dir, TABU_CAMS):
 
 def get_img_paths(scene_dir, TABU_CAMS):
     all_ims = []
-    for i in range(23):
+    for i in range(9):
         if i in TABU_CAMS:
             continue
         data_root = os.path.join(scene_dir, 'c{:02d}'.format(i + 1))
@@ -127,7 +127,7 @@ def get_img_paths(scene_dir, TABU_CAMS):
 
 def get_mask_paths(scene_dir, TABU_CAMS):
     all_masks = []
-    for i in range(23):
+    for i in range(9):
         if i in TABU_CAMS:
             continue
         data_root = os.path.join(scene_dir, 'mask/c{:02d}'.format(i + 1))

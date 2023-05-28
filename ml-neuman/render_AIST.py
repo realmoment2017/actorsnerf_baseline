@@ -52,21 +52,22 @@ def optimize_pose_with_nerf(opt, cap, net, iters=1000, save_every=10):
 def main(opt):
     # _, _, test_split = neuman_helper.create_split_files(opt.scene_dir)
     # test_views = neuman_helper.read_text(test_split)
-    test_views = list(range(301, 550))
+    test_views = list(range(300, 1000))
     test_views = test_views[::10]
 
     preds = []
     gts = []
 
     evaluator = Evaluator()
-    for exclude_TABU_CAMS in range(22): 
-        TABU_CAMS = list(range(23))
+    for exclude_TABU_CAMS in range(8): 
+        TABU_CAMS = list(range(9))
         TABU_CAMS.pop(exclude_TABU_CAMS+1)
         scene = AIST_helper_eval.ZjuMocapReader.read_scene(
             opt.scene_dir,
             tgt_size=None,
             TABU_CAMS=TABU_CAMS,
         )
+        print('Scene loaded', TABU_CAMS)
         if opt.geo_threshold < 0:
             bones = []
             for i in range(len(scene.captures)):
@@ -76,6 +77,8 @@ def main(opt):
             weights = torch.load(opt.weights_path, map_location='cpu')
             utils.safe_load_weights(net, weights['hybrid_model_state_dict'])
 
+        test_views = list(range(300, min(1000, len(scene.captures))))
+        test_views = test_views[::10]
         for view_name in test_views:
             cap = scene[view_name]
             i = cap.frame_id['frame_id']
@@ -94,9 +97,8 @@ def main(opt):
                 geo_threshold=opt.geo_threshold,
                 return_depth=False
             )
-            breakpoint()
             file_path = re.split('/', opt.weights_path)[-2]
-            save_path = os.path.join('./demo', f'test_views/{file_path}', f'{str(exclude_TABU_CAMS+1)}_frame_{str(i).zfill(6)}.png')
+            save_path = os.path.join('./demo', f'test_views/{file_path}', f'{str(exclude_TABU_CAMS+1)}_frame_{str(i*4+200).zfill(6)}.png')
             if not os.path.isdir(os.path.dirname(save_path)):
                 os.makedirs(os.path.dirname(save_path))
             imageio.imsave(save_path, out)
