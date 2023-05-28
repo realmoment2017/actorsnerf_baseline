@@ -145,7 +145,10 @@ class HumanRayDataset(data.Dataset):
                 continue
             img = cap.image
             # MODIFY FOR ACTORSNERF BASELINE
-            img[cap.mask<1] = 0
+            if self.opt.white_bkg:
+                img[cap.mask<1] = 255
+            else:
+                img[cap.mask<1] = 0
             # MODIFY FOR ACTORSNERF BASELINE
             if self.num_patch == 1 and need_patch and patch_counter == 0:
                 num_rays_dict = self.get_num_rays_dict_patch(num)

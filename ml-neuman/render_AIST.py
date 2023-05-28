@@ -20,7 +20,7 @@ loss_fn_alex = lpips.LPIPS(net='vgg')
 
 from models import human_nerf
 from utils import render_utils, utils
-from data_io import neuman_helper, zju_helper_eval
+from data_io import neuman_helper, AIST_helper_eval
 from options import options
 
 import re
@@ -62,7 +62,7 @@ def main(opt):
     for exclude_TABU_CAMS in range(22): 
         TABU_CAMS = list(range(23))
         TABU_CAMS.pop(exclude_TABU_CAMS+1)
-        scene = zju_helper_eval.ZjuMocapReader.read_scene(
+        scene = AIST_helper_eval.ZjuMocapReader.read_scene(
             opt.scene_dir,
             tgt_size=None,
             TABU_CAMS=TABU_CAMS,
@@ -90,10 +90,11 @@ def main(opt):
                 scene.Ts[i],
                 # rays_per_batch=opt.rays_per_batch,
                 samples_per_ray=opt.samples_per_ray,
-                white_bkg=False,
+                white_bkg=True,
                 geo_threshold=opt.geo_threshold,
                 return_depth=False
             )
+            breakpoint()
             file_path = re.split('/', opt.weights_path)[-2]
             save_path = os.path.join('./demo', f'test_views/{file_path}', f'{str(exclude_TABU_CAMS+1)}_frame_{str(i).zfill(6)}.png')
             if not os.path.isdir(os.path.dirname(save_path)):
@@ -103,7 +104,7 @@ def main(opt):
             # preds.append(imageio.imread(save_path))
             # gts.append(cap.image)
             gt_image = cap.image.copy() / 255.0
-            gt_image[cap.mask<1] = 0
+            gt_image[cap.mask<1] = 1
             evaluator.evaluate(out, gt_image)
             evaluator.summarize()
     evaluator.summarize()

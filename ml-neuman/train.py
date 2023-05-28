@@ -84,7 +84,7 @@ def train_background(opt):
 
 
 def train_human(opt):
-    debug_dataset = 'zju_mocap'
+    debug_dataset = 'AIST_mocap'
     if debug_dataset=='zju_mocap':
         train_split, val_split, _ = zju_helper.create_split_files(opt.scene_dir, every_K=opt.every_K)
         train_scene = zju_helper.ZjuMocapReader.read_scene(
@@ -144,7 +144,7 @@ def train_human(opt):
         train_dset,
         batch_size=1,
         shuffle=True,
-        num_workers=4,
+        num_workers=0,
         worker_init_fn=utils.worker_init_fn,
     )
     val_loader = DataLoader(
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     else:
         # common args with diferent defaults
         parser.add_argument('--rays_per_batch', default=1536, type=int, help='how many samples per ray')
-        parser.add_argument('--valid_iter', type=int, default=1000, help='interval of validation')
+        parser.add_argument('--valid_iter', type=int, default=5000, help='interval of validation')
         parser.add_argument('--max_iter', type=int, default=300000, help='total training iterations')
         parser.add_argument('--body_rays_ratio', default=0.95, type=float, help='the percentage of rays on body')
         parser.add_argument('--border_rays_ratio', default=0.05, type=float, help='the percentage of rays on human border')
