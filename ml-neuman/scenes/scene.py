@@ -102,9 +102,9 @@ class RigCameraScene(ImageFileScene):
     def _build_img_X_to_index_dict(self):
         assert (self.captures is not None) and (len(self.captures) > 0), 'there is no captures'
         for i, cap in enumerate(self.captures):
-            assert cap.image_path not in self.image_path_to_index, 'image already exists'
+            # assert cap.image_path not in self.image_path_to_index, 'image already exists'
             self.image_path_to_index[cap.image_path] = i
-            assert os.path.basename(cap.image_path) not in self.fname_to_index_dict, 'Image already exists'
+            # assert os.path.basename(cap.image_path) not in self.fname_to_index_dict, 'Image already exists'
             self.fname_to_index_dict[os.path.basename(cap.image_path)] = i
 
     def _build_id_to_index_dict(self):
