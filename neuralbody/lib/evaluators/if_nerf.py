@@ -194,10 +194,10 @@ class Evaluator:
         ssim_str = 'ssim: {}'.format(np.mean(self.ssim))
         lpips_str = 'lpips: {}'.format(np.mean(self.lpips))
 
-        print(mse_str)
-        print(psnr_str)
-        print(ssim_str)
-        print(lpips_str)
+        # print(mse_str)
+        # print(psnr_str)
+        # print(ssim_str)
+        # print(lpips_str)
 
     def summarize(self):
         result_dir = cfg.result_dir

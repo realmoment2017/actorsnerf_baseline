@@ -28,7 +28,7 @@ class Dataset(data.Dataset):
         if len(view) == 0:
             view = [0]
 
-        train_few_shot = True
+        train_few_shot = False
         if train_few_shot:
             ni = 11
             i_intv = 30
@@ -50,6 +50,10 @@ class Dataset(data.Dataset):
             i = 301
             ni = 25
             i_intv = 10
+            if self.human in ['d16', 'd17', 'd18', 'd19', 'd20']: # for AIST++
+                i = 301
+                ni = 1000
+                i_intv = 10
 
         if train_few_shot:
             self.ims = np.array([
@@ -62,9 +66,9 @@ class Dataset(data.Dataset):
             ]).ravel()[1:]
 
             if self.human in ['d16', 'd17', 'd18', 'd19', 'd20']: # for AIST++
-                ni = 30
-                i_intv = 10
-                skip = 60
+                ni = 300
+                i_intv = 1
+                skip = 30
                 if skip==60:
                     i_intv = 75
                     ni = 5
@@ -120,7 +124,7 @@ class Dataset(data.Dataset):
         self.num_cams = len(view)
 
         self.nrays = cfg.N_rand
-        print(self.ims)
+        # print(self.ims)
 
     def get_mask(self, index):
         if self.human in ['d16', 'd17', 'd18', 'd19', 'd20']:
