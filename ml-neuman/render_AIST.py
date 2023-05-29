@@ -97,18 +97,18 @@ def main(opt):
                 geo_threshold=opt.geo_threshold,
                 return_depth=False
             )
+            gt_image = cap.image.copy() / 255.0
+            gt_image[cap.mask<1] = 1
+            evaluator.evaluate(out, gt_image)
+            # evaluator.summarize()
             file_path = re.split('/', opt.weights_path)[-2]
             save_path = os.path.join('./demo', f'test_views/{file_path}', f'{str(exclude_TABU_CAMS+1)}_frame_{str(i*4+200).zfill(6)}.png')
             if not os.path.isdir(os.path.dirname(save_path)):
                 os.makedirs(os.path.dirname(save_path))
-            imageio.imsave(save_path, out)
-            print(f'image saved: {save_path}')
+            imageio.imsave(save_path, (out*255).astype(np.uint8))
+            # print(f'image saved: {save_path}')
             # preds.append(imageio.imread(save_path))
             # gts.append(cap.image)
-            gt_image = cap.image.copy() / 255.0
-            gt_image[cap.mask<1] = 1
-            evaluator.evaluate(out, gt_image)
-            evaluator.summarize()
     evaluator.summarize()
 
 
